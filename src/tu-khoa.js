@@ -126,9 +126,15 @@ function chonNamTuKhoa(daChamDiem, soLuong = 5) {
     return chung.length >= 2
   }
 
+  // So bằng CHUẨN HOÁ chứ không so chuỗi thô. Gợi ý của YouTube trả về đủ kiểu
+  // hoa thường và khoảng trắng thừa, nên "bible stories black" và
+  // "Bible Stories Black " lọt qua phép so thô thành hai từ khóa khác nhau —
+  // và mỗi từ khóa trùng là ném đi 100 đơn vị quota để tìm lại y hệt.
+  const daCo = (uv) => chon.some((c) => chuanHoa(c.cum) === chuanHoa(uv.cum))
+
   for (const uv of xep) {
     if (chon.length >= soLuong) break
-    if (chon.some((c) => c.cum === uv.cum)) continue
+    if (daCo(uv)) continue
     if (chon.some((c) => trungNhieu(c, uv))) continue
     chon.push(uv)
   }
@@ -137,7 +143,7 @@ function chonNamTuKhoa(daChamDiem, soLuong = 5) {
   if (chon.length < soLuong) {
     for (const uv of xep) {
       if (chon.length >= soLuong) break
-      if (!chon.some((c) => c.cum === uv.cum)) chon.push(uv)
+      if (!daCo(uv)) chon.push(uv)
     }
   }
   return chon

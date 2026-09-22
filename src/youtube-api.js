@@ -27,8 +27,25 @@ class LoiKhoa extends Error {
   }
 }
 
+// LỖI ĐÃ LÀM HỎNG CẢ MÀN Ý TƯỞNG Ở BẢN 0.1–0.3:
+//
+// Trong tài liệu của Google, các lời gọi được đặt tên theo kiểu `resource.method`
+// — "search.list", "videos.list". Đó là TÊN PHƯƠNG THỨC, dùng để tra bảng giá
+// quota. ĐƯỜNG DẪN HTTP thì chỉ có tên tài nguyên: `/youtube/v3/search`.
+//
+// Ghép thẳng tên phương thức vào URL ra `/youtube/v3/search.list` → Google trả
+// 404 cho MỌI lời gọi. Triệu chứng nhìn từ ngoài: tìm gì cũng ra 0 video.
+//
+// Vì sao kiểm thử tầng 1 không bắt được: ca kiểm thử nhồi hàm mạng giả rồi chỉ
+// soi các THAM SỐ trong URL (q, type, publishedAfter, key) — tức là kiểm đúng
+// cái mình đã nghĩ, mà chỗ sai lại nằm ở phần đường dẫn không ai soi. Nay có ca
+// kiểm thử khẳng định nguyên văn đường dẫn.
+function duongDanThat(tenPhuongThuc) {
+  return String(tenPhuongThuc).replace(/\.list$/, '')
+}
+
 function ghepURL(duongDan, thamSo) {
-  const u = new URL(`${GOC}/${duongDan}`)
+  const u = new URL(`${GOC}/${duongDanThat(duongDan)}`)
   for (const [k, v] of Object.entries(thamSo)) {
     if (v !== undefined && v !== null && v !== '') u.searchParams.set(k, String(v))
   }
@@ -88,6 +105,15 @@ function taoKhachHang({ layJSONHam, boDem, idKhoa, khoa, nhatKy = { tin() {}, lo
       if (loi.maHttp === 403 && than.includes('quotaExceeded')) {
         if (boDem) boDem.danhDauHet(idKhoa)
         throw new LoiQuota()
+      }
+      // 404 KHÔNG BAO GIỜ là lỗi của khoá API. Nó nghĩa là đường dẫn sai —
+      // tức là lỗi của tool. Nói thẳng ra, đừng để người dùng đi xin khoá mới
+      // hay ngồi chờ reset quota vô ích.
+      if (loi.maHttp === 404) {
+        nhatKy.loi(`API ${duongDan} trả 404 — đường dẫn ${GOC}/${duongDanThat(duongDan)} không tồn tại.`)
+        throw new Error(
+          `Lỗi của tool, không phải lỗi khoá API: gọi sai địa chỉ YouTube API (404 ở "${duongDanThat(duongDan)}"). ` +
+          'Khoá của anh vẫn nguyên, quota không bị trừ. Báo lại cho người làm tool kèm màn Nhật ký.')
       }
       if (loi.maHttp === 400 || loi.maHttp === 403) {
         nhatKy.loi(`API ${duongDan} trả ${loi.maHttp}: ${than.slice(0, 300)}`)
@@ -266,6 +292,7 @@ module.exports = {
   taoKhachHang,
   ngayTuTruoc,
   ghepURL,
+  duongDanThat,
   chia,
   tachDinhDanhKenh,
   LoiQuota,

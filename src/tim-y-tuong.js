@@ -58,7 +58,17 @@ async function timYTuong({
 
   const tatCaId = [...new Set([...idTheoTuKhoa.values()].flat())]
   if (!tatCaId.length) {
-    return { dong: [], loiTuKhoa, quotaDaDung: khach.daDungPhien(), ghiChu: 'Không tìm được video nào.' }
+    // soNoView phải có mặt kể cả khi rỗng: thiếu nó thì giao diện in ra
+    // "undefined nổ view" — trông như hỏng nặng trong khi chỉ là không có kết quả.
+    return {
+      dong: [],
+      soNoView: 0,
+      loiTuKhoa,
+      quotaDaDung: khach.daDungPhien(),
+      ghiChu: loiTuKhoa.length
+        ? `Không tìm được video nào — cả ${loiTuKhoa.length} từ khóa đều lỗi. Xem màn Nhật ký để biết lý do thật.`
+        : 'Không tìm được video nào khớp bộ lọc.'
+    }
   }
 
   // --- Lấy số liệu video (bắt buộc: search.list không có view) -----------

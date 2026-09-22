@@ -11,6 +11,48 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.3.1 — sửa lỗi làm màn Ý tưởng tìm gì cũng ra 0 video
+
+Từ bản 0.1.0 tới 0.3.0, **màn Ý tưởng chưa bao giờ tìm được video nào**. Mọi
+lời gọi đều bị YouTube trả về `HTTP 404`.
+
+**Nguyên nhân.** Trong tài liệu của Google, các lời gọi được đặt tên theo kiểu
+`resource.method` — `search.list`, `videos.list`. Đó là **tên phương thức**,
+dùng để tra bảng giá quota. **Đường dẫn HTTP** thì chỉ có tên tài nguyên:
+`/youtube/v3/search`. Tool ghép thẳng tên phương thức vào URL, thành
+`/youtube/v3/search.list` — một địa chỉ không tồn tại.
+
+**Vì sao ba bản liền không bắt được.** Ca kiểm thử tầng 1 có nhồi hàm mạng giả
+và có soi URL, nhưng chỉ soi các **tham số**: `q`, `type`, `publishedAfter`,
+`key`. Tức là kiểm đúng những gì mình đã nghĩ tới, còn chỗ sai lại nằm ở phần
+đường dẫn không ai soi. Nay có bốn ca khẳng định **nguyên văn đường dẫn**, và
+một ca quét toàn bộ bảng giá quota để bảo đảm không lời gọi nào để lọt `.list`
+vào URL.
+
+**Cách phân biệt về sau, để khỏi nghi oan cho khoá API:**
+
+| Mã lỗi | Nghĩa thật |
+|---|---|
+| `404` | **Lỗi của tool** — gọi sai địa chỉ. Khoá vẫn nguyên, quota không bị trừ. |
+| `403` + `quotaExceeded` | Hết quota hôm nay, chờ tới 0h giờ Pacific |
+| `403` khác | Khoá sai, hoặc chưa bật YouTube Data API v3, hoặc đặt nhầm Application restrictions |
+| `400` | Sai tham số |
+
+Tool nay dịch riêng mã 404 thành câu nói rõ đây là lỗi của tool chứ không phải
+lỗi khoá.
+
+Hai lỗi nhỏ hơn cũng lộ ra trong cùng một nhật ký:
+
+- **Từ khóa trùng bị chọn hai lần.** Gợi ý của YouTube trả về đủ kiểu hoa
+  thường và khoảng trắng thừa, nên `"bible stories black"` và
+  `"Bible Stories Black "` lọt qua phép so chuỗi thô thành hai từ khóa khác
+  nhau — mỗi lần trùng là ném đi **100 đơn vị quota** để tìm lại y hệt. Nay so
+  bằng dạng đã chuẩn hoá.
+- **"undefined nổ view".** Khi không có video nào, hàm trả về thiếu hẳn trường
+  đếm, giao diện in ra `undefined` — trông như hỏng nặng trong khi chỉ là không
+  có kết quả. Nay luôn trả 0, và nếu mọi từ khóa đều lỗi thì ghi chú chỉ thẳng
+  sang màn Nhật ký.
+
 ### 0.3.0 — chạy riêng từng tính năng, nhận tệp Word, tự cập nhật
 
 **Từng màn dùng riêng được.** Trước đây muốn dùng Prompt ảnh là phải đi vòng

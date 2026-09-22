@@ -1156,6 +1156,87 @@ async function chay() {
   })
 
   // =========================================================================
+  nhom('25. Đường dẫn API — lỗi đã làm hỏng cả màn Ý tưởng ở bản 0.1–0.3')
+
+  await kiem('ĐƯỜNG DẪN HTTP là tên tài nguyên, KHÔNG phải tên phương thức', () => {
+    // "search.list" là tên phương thức trong tài liệu Google, dùng để tra bảng
+    // giá quota. Đường dẫn HTTP chỉ có "/search". Ghép thẳng tên phương thức
+    // vào URL thì Google trả 404 cho MỌI lời gọi — tìm gì cũng ra 0 video.
+    assert.strictEqual(ytApi.duongDanThat('search.list'), 'search')
+    assert.strictEqual(ytApi.duongDanThat('videos.list'), 'videos')
+    assert.strictEqual(ytApi.duongDanThat('channels.list'), 'channels')
+    assert.strictEqual(ytApi.duongDanThat('playlistItems.list'), 'playlistItems')
+  })
+
+  await kiem('URL dựng ra phải trỏ đúng endpoint thật của YouTube', () => {
+    const u = new URL(ytApi.ghepURL('search.list', { q: 'x', key: 'AIzaTEST' }))
+    assert.strictEqual(u.origin + u.pathname, 'https://www.googleapis.com/youtube/v3/search')
+    assert.strictEqual(u.searchParams.get('q'), 'x')
+  })
+
+  await kiem('KHÔNG lời gọi nào được để lọt ".list" vào đường dẫn', () => {
+    // Ca kiểm thử cũ chỉ soi tham số (q, type, publishedAfter, key) — tức là
+    // kiểm đúng cái mình đã nghĩ, còn chỗ sai nằm ở phần đường dẫn không ai soi.
+    for (const pt of Object.keys(quotaMod.GIA)) {
+      const u = new URL(ytApi.ghepURL(pt, {}))
+      assert.ok(!u.pathname.includes('.list'),
+        `${pt} dựng ra đường dẫn ${u.pathname} — Google sẽ trả 404`)
+      assert.ok(/^\/youtube\/v3\/[A-Za-z]+$/.test(u.pathname),
+        `${pt} dựng ra đường dẫn lạ: ${u.pathname}`)
+    }
+  })
+
+  await kiem('bảng giá quota VẪN tra theo tên phương thức, không đổi', () => {
+    // Hai thứ khác nhau và phải giữ khác nhau: tên phương thức để tra giá,
+    // tên tài nguyên để dựng URL.
+    assert.strictEqual(quotaMod.GIA['search.list'], 100)
+    assert.strictEqual(quotaMod.GIA['videos.list'], 1)
+  })
+
+  // =========================================================================
+  nhom('26. Hai lỗi nhỏ lộ ra cùng lúc trong nhật ký thật')
+
+  await kiem('từ khóa trùng nhau chỉ khác hoa thường KHÔNG được chọn hai lần', () => {
+    // Mỗi từ khóa trùng là ném đi 100 đơn vị quota để tìm lại y hệt.
+    const chon = tuKhoa.chonNamTuKhoa([
+      { cum: 'bible stories black', tuGoc: ['bible stories'], diem: 5 },
+      { cum: 'Bible Stories Black ', tuGoc: ['black'], diem: 4.9 },
+      { cum: 'blackpink', tuGoc: ['black'], diem: 4.8 },
+      { cum: 'black trumpet', tuGoc: ['black'], diem: 4.7 },
+      { cum: 'black american accent', tuGoc: ['black'], diem: 4.6 }
+    ], 5)
+    const chuan = chon.map((c) => tuKhoa.chuanHoa(c.cum))
+    assert.strictEqual(new Set(chuan).size, chuan.length, 'còn từ khóa trùng: ' + chuan.join(' | '))
+  })
+
+  await kiem('không có kết quả thì soNoView phải là 0, không được undefined', async () => {
+    // Thiếu trường này thì giao diện in "undefined nổ view", trông như hỏng
+    // nặng trong khi chỉ là không tìm được video nào.
+    const kq = await timYTuong({
+      tuKhoa: ['abc'],
+      caiDat: { soNgay: 14, soVideoMoiTuKhoa: 5 },
+      khoa: { id: 'k1', ten: 'thử', khoa: 'AIza' },
+      boDem: null,
+      layJSONHam: async () => ({ items: [] })
+    })
+    assert.strictEqual(kq.soNoView, 0)
+    assert.ok(kq.ghiChu)
+  })
+
+  await kiem('mọi từ khóa đều lỗi thì ghi chú phải chỉ sang màn Nhật ký', async () => {
+    const kq = await timYTuong({
+      tuKhoa: ['a', 'b'],
+      caiDat: { soNgay: 14, soVideoMoiTuKhoa: 5 },
+      khoa: { id: 'k1', ten: 'thử', khoa: 'AIza' },
+      boDem: null,
+      layJSONHam: async () => { const e = new Error('HTTP 404'); e.maHttp = 404; throw e }
+    })
+    assert.strictEqual(kq.dong.length, 0)
+    assert.strictEqual(kq.soNoView, 0)
+    assert.ok(/Nhật ký/i.test(kq.ghiChu), 'phải chỉ người dùng tới chỗ xem được lý do thật')
+  })
+
+  // =========================================================================
   console.log('\n' + '─'.repeat(58))
   console.log(`TẦNG 1: ${soQua} qua, ${soTruot.length} truột`)
   if (soTruot.length) {
