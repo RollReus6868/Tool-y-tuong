@@ -11,6 +11,51 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.3.0 — chạy riêng từng tính năng, nhận tệp Word, tự cập nhật
+
+**Từng màn dùng riêng được.** Trước đây muốn dùng Prompt ảnh là phải đi vòng
+qua màn Kiểm duyệt, vì nó đọc ké ô nhập của màn đó — đúng kiểu ràng buộc chéo
+làm người ta không dùng lẻ được một tính năng. Nay:
+
+- **Lời thoại** có *Chế độ nhanh*: dán một link, lấy lời thoại, chép hoặc lưu
+  ra tệp — không cần tạo dự án. Hai nút "Đẩy sang Kiểm duyệt / Prompt ảnh" là
+  cầu nối **tuỳ chọn**, dùng khi muốn nối, không dùng thì mỗi màn vẫn chạy riêng.
+- **Prompt ảnh** có ô kịch bản riêng của nó.
+- Các khối chạy độc lập viền tím để nhìn ra ngay.
+
+**Nhận tệp Word (.docx) ở cả ba màn** Lời thoại, Kiểm duyệt và Prompt ảnh, cộng
+`.txt .md .srt .vtt .rtf`. Tự bóc chữ bằng `jszip` (thuần JavaScript, không có
+module native nên không làm vỡ build CI) thay vì gọi thư viện chuyển đổi nặng.
+Hai chỗ phải cẩn thận:
+
+- **Không** lấy kiểu "xoá hết thẻ rồi giữ phần còn lại". Word nhét cả mã trường
+  (số trang, mục lục, ngày tự động) vào cùng tài liệu, bóc kiểu đó là dính rác
+  vào giữa kịch bản. Chỉ lấy đúng nội dung các thẻ `<w:t>`.
+- Ngắt dòng mềm `<w:br/>` phải quét **cùng lượt** với chữ. Làm hai lượt thì cái
+  xuống dòng vừa chèn nằm ngoài thẻ `<w:t>` và bị loại ở bước gom — hai dòng
+  dính liền thành "Trướcsau khi xuống dòng", không lỗi, không log.
+
+**Mô tả cảnh nhận cả JSON lẫn prompt thường.** JSON mang theo từng trường riêng
+nên ghép được qua template và chèn mô tả nhân vật, nhưng hỏng một dấu phẩy là vỡ
+cả lô. Prompt thường mỗi dòng một prompt, chịu được lời dẫn và cắt ngang, dùng
+nguyên văn. Dán kiểu nào tool cũng tự nhận ra. Một điểm cố ý: **JSON vỡ thì báo
+vỡ JSON**, không âm thầm hạ xuống đọc từng dòng — làm vậy sẽ biến một lô hỏng
+thành hàng chục prompt rác mà người dùng không biết.
+
+**Tự tải và tự cài bản cập nhật**, có thanh tiến độ theo phần trăm và MB/s, cùng
+hai tuỳ chọn: tự tải ngầm khi thấy bản mới, và tự cài lúc đóng app. Ba giới hạn
+thật, tool nói thẳng ngay trên màn Cài đặt chứ không để bấm nút rồi ngồi đợi:
+
+| Trường hợp | Kiểm tra | Tải | Tự cài |
+|---|---|---|---|
+| Windows bản Setup | ✔ | ✔ | ✔ |
+| Windows bản Portable | ✔ | ✔ | ✘ không có trình cài đặt |
+| macOS (chưa ký số) | ✔ | ✔ | ✘ macOS bắt buộc chữ ký hợp lệ mới thay được chính nó |
+| Chạy từ mã nguồn | ✘ | ✘ | ✘ |
+
+Kiểm thử tầng 2 nay **cuộn tới và chụp riêng các khối nằm dưới tầm nhìn** — nút
+bị cắt ở cuối trang cũng không ném exception nào.
+
 ### 0.2.0 — đủ cả sáu màn, chạy hết chuỗi sản xuất
 
 Bản 0.1.x mới chỉ có màn Ý tưởng. Bản này làm nốt năm màn còn lại.

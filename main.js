@@ -24,6 +24,7 @@ const kiemDuyet = require('./src/kiem-duyet')
 const promptAnh = require('./src/prompt-anh')
 const { taoKhoDuAn } = require('./src/du-an')
 const trinhDuyet = require('./src/trinh-duyet')
+const docTep = require('./src/doc-tep')
 
 const LA_SMOKE = !!process.env.YT_SMOKE
 let cuaSo = null
@@ -95,6 +96,102 @@ function guiVeGiaoDien(kenh, duLieu) {
 
 function baoTienDo(duLieu) {
   guiVeGiaoDien('tien-do', duLieu)
+}
+
+// ---------------------------------------------------------------------------
+// Tự cập nhật
+//
+// NÓI THẲNG BA GIỚI HẠN THẬT, đừng để người dùng bấm nút rồi ngồi đợi vô ích:
+//
+// 1. Bản chạy từ mã nguồn không cập nhật được — electron-updater chỉ làm việc
+//    với bản đã đóng gói.
+// 2. Bản macOS CHƯA KÝ SỐ không tự cài được. Squirrel.Mac bắt buộc app phải có
+//    chữ ký hợp lệ mới thay thế được chính nó; app của mình dựng với
+//    `identity: null` nên không có. Trên Mac vẫn tải được tệp về, nhưng bước
+//    cài phải làm tay.
+// 3. Bản Windows PORTABLE không tự cài được, vì nó không có trình cài đặt để
+//    chạy. Chỉ bản Setup (NSIS) mới tự thay thế được.
+// ---------------------------------------------------------------------------
+
+let boCapNhat = null
+let daTaiXongBanMoi = false
+
+function laBanPortable() {
+  return process.platform === 'win32' && !!process.env.PORTABLE_EXECUTABLE_DIR
+}
+
+function khaNangCapNhat() {
+  if (!app.isPackaged) {
+    return {
+      kiemTraDuoc: false, taiDuoc: false, caiDuoc: false,
+      lyDo: 'Đang chạy bản mã nguồn (chưa đóng gói) nên không kiểm tra cập nhật được.'
+    }
+  }
+  if (laBanPortable()) {
+    return {
+      kiemTraDuoc: true, taiDuoc: true, caiDuoc: false,
+      lyDo: 'Bản portable không tự cài được vì không có trình cài đặt. Tool sẽ tải tệp về rồi anh tự thay.'
+    }
+  }
+  if (process.platform === 'darwin') {
+    return {
+      kiemTraDuoc: true, taiDuoc: true, caiDuoc: false,
+      lyDo: 'Bản macOS chưa mua chữ ký số nên không tự cài được — macOS bắt buộc app phải có chữ ký hợp lệ mới thay thế được chính nó. Tải xong anh tự kéo vào Applications.'
+    }
+  }
+  return { kiemTraDuoc: true, taiDuoc: true, caiDuoc: true, lyDo: '' }
+}
+
+function layBoCapNhat() {
+  if (boCapNhat) return boCapNhat
+  const { autoUpdater } = require('electron-updater')
+  boCapNhat = autoUpdater
+
+  const caiDat = kho ? kho.docCaiDat() : {}
+  autoUpdater.autoDownload = !!caiDat.tuDongTaiBanMoi
+  autoUpdater.autoInstallOnAppQuit = !!caiDat.tuDongCaiKhiThoat
+  autoUpdater.logger = { info: nhatKy.tin, warn: nhatKy.canhBao, error: nhatKy.loi, debug: () => {} }
+
+  autoUpdater.on('checking-for-update', () => guiVeGiaoDien('cap-nhat', { giaiDoan: 'dang-kiem' }))
+
+  autoUpdater.on('update-available', (tt) => {
+    nhatKy.tin(`Có bản mới: ${tt.version}`)
+    guiVeGiaoDien('cap-nhat', { giaiDoan: 'co-ban-moi', phienBan: tt.version })
+  })
+
+  autoUpdater.on('update-not-available', () =>
+    guiVeGiaoDien('cap-nhat', { giaiDoan: 'khong-co', phienBan: app.getVersion() }))
+
+  autoUpdater.on('download-progress', (t) => {
+    guiVeGiaoDien('cap-nhat', {
+      giaiDoan: 'dang-tai',
+      phanTram: Math.round(t.percent || 0),
+      daTai: t.transferred,
+      tong: t.total,
+      tocDo: t.bytesPerSecond
+    })
+    baoTienDo({
+      phanTram: Math.round(t.percent || 0),
+      viec: 'Tải bản cập nhật',
+      chiTiet: `${(t.transferred / 1048576).toFixed(1)}/${(t.total / 1048576).toFixed(1)} MB · ${(t.bytesPerSecond / 1048576).toFixed(1)} MB/s`,
+      khu: 'capnhat'
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (tt) => {
+    daTaiXongBanMoi = true
+    nhatKy.tin(`Đã tải xong bản ${tt.version}.`)
+    guiVeGiaoDien('cap-nhat', { giaiDoan: 'da-tai-xong', phienBan: tt.version, khaNang: khaNangCapNhat() })
+    baoTienDo({ phanTram: 100, viec: 'Tải bản cập nhật xong', chiTiet: `bản ${tt.version}`, trangThai: 'xong', khu: 'capnhat' })
+  })
+
+  autoUpdater.on('error', (loi) => {
+    nhatKy.loi('Bộ cập nhật lỗi:', loi.message)
+    guiVeGiaoDien('cap-nhat', { giaiDoan: 'loi', loi: loi.message })
+    baoTienDo({ phanTram: 100, viec: 'Cập nhật lỗi', chiTiet: loi.message, soLoi: 1, trangThai: 'loi', khu: 'capnhat' })
+  })
+
+  return autoUpdater
 }
 
 // Dựng khách hàng API kèm khoá còn quota. Trả { khach, khoa } hoặc { loi }.
@@ -409,6 +506,77 @@ function dangKyIPC() {
     return { ok: ketQua.length > 0, ketQua, loiVideo }
   })
 
+  ipcMain.handle('tep:luu', async (_su, { chu, tenGoiY }) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(cuaSo, {
+      title: 'Lưu thành tệp',
+      defaultPath: path.join(app.getPath('downloads'), tenGoiY || 'noi-dung.md'),
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Văn bản', extensions: ['txt'] }
+      ]
+    })
+    if (canceled || !filePath) return { ok: false, huy: true }
+    fs.writeFileSync(filePath, String(chu || ''), 'utf8')
+    nhatKy.tin(`Đã lưu: ${filePath}`)
+    return { ok: true, duongDan: filePath }
+  })
+
+  // Lấy lời thoại MỘT video, không cần dự án — chế độ nhanh của màn Lời thoại.
+  ipcMain.handle('loithoai:mot-video', async (_su, { link, taiKhoanId }) => {
+    const caiDat = kho.docCaiDat()
+    const id = ytDlp.tachVideoId(link)
+    if (!id) return { ok: false, loi: 'Không đọc được link. Dán link YouTube đầy đủ hoặc mã video 11 ký tự.' }
+    if (!ytDlp.daCo(kho.thuMuc)) {
+      return { ok: false, loi: 'Chưa có yt-dlp. Bấm nút "Tải yt-dlp" ở khối Công cụ bên dưới (khoảng 17MB, chỉ tải một lần).', thieuYtDlp: true }
+    }
+
+    const thuMucTam = path.join(kho.thuMuc, 'tam-phu-de-nhanh')
+    fs.rmSync(thuMucTam, { recursive: true, force: true })
+    fs.mkdirSync(thuMucTam, { recursive: true })
+
+    let duongDanCookie = null
+    if (caiDat.dungCookie && taiKhoanId && quanLyDuyet) {
+      try {
+        const ck = await quanLyDuyet.layCookie(taiKhoanId)
+        duongDanCookie = path.join(thuMucTam, 'cookies.txt')
+        fs.writeFileSync(duongDanCookie, ytDlp.dinhDangCookieNetscape(ck), 'utf8')
+      } catch (e) {
+        nhatKy.canhBao('Không lấy được cookie: ' + e.message)
+      }
+    }
+
+    try {
+      const tho = await ytDlp.layPhuDe({
+        thuMucDuLieu: kho.thuMuc,
+        thuMucTam,
+        videoId: id,
+        ngonNgu: (caiDat.relevanceLanguage || 'en').slice(0, 2),
+        duongDanCookie,
+        baoTienDo: (t) => baoTienDo({ ...t, khu: 'loithoai' })
+      })
+      const sach = phuDe.chuyenThanhVanBan(tho.tho, { dinhDang: tho.dinhDang })
+      baoTienDo({
+        phanTram: 100, viec: 'Lấy lời thoại xong',
+        chiTiet: `${sach.soTu} từ`, trangThai: 'xong', khu: 'loithoai'
+      })
+      nhatKy.tin(`Lời thoại nhanh ${id}: ${sach.soTu} từ, bỏ ${sach.tyLeBoLap}% cue lặp cuộn`)
+      return {
+        ok: true,
+        videoId: id,
+        tieuDe: tho.tieuDe,
+        tenKenh: tho.tenKenh,
+        thoiLuongGiay: tho.thoiLuongGiay,
+        dinhDang: tho.dinhDang,
+        ...sach
+      }
+    } catch (e) {
+      baoTienDo({ phanTram: 100, viec: 'Lấy lời thoại lỗi', chiTiet: e.message, soLoi: 1, trangThai: 'loi', khu: 'loithoai' })
+      return { ok: false, loi: e.message }
+    } finally {
+      if (duongDanCookie) { try { fs.unlinkSync(duongDanCookie) } catch (_) {} }
+    }
+  })
+
   // --- Kho skill -------------------------------------------------------------
   ipcMain.handle('skill:them', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog(cuaSo, {
@@ -543,21 +711,25 @@ function dangKyIPC() {
     return { ok: true, baoCao: bc, coBanGoc: !!goc.trim() }
   })
 
-  ipcMain.handle('kiemduyet:mo-tep', async () => {
+  // Một cửa mở tệp DÙNG CHUNG cho Lời thoại, Kiểm duyệt và Prompt ảnh — cả ba
+  // màn đều nhận Word, văn bản thuần và phụ đề, không màn nào đọc được ít hơn
+  // màn nào.
+  ipcMain.handle('tep:doc', async (_su, { tieuDe } = {}) => {
     const { canceled, filePaths } = await dialog.showOpenDialog(cuaSo, {
-      title: 'Mở tệp kịch bản có sẵn',
+      title: tieuDe || 'Mở tệp từ máy',
       properties: ['openFile'],
-      filters: [{ name: 'Kịch bản', extensions: ['txt', 'md', 'markdown', 'srt', 'vtt'] }]
+      filters: docTep.BO_LOC_HOP_THOAI
     })
     if (canceled || !filePaths.length) return { ok: false, huy: true }
 
-    const duongDan = filePaths[0]
-    const tho = fs.readFileSync(duongDan, 'utf8')
-    // .srt/.vtt là phụ đề chứ không phải văn xuôi — bóc lấy chữ, bỏ mốc giờ.
-    const chu = /\.(srt|vtt)$/i.test(duongDan)
-      ? phuDe.chuyenThanhVanBan(tho, { dinhDang: 'vtt' }).vanBan
-      : tho
-    return { ok: true, chu, ten: path.basename(duongDan) }
+    try {
+      const kq = await docTep.docTep(filePaths[0])
+      nhatKy.tin(`Đọc tệp ${kq.ten}: ${kq.soTu} từ (${kq.ghiChu})`)
+      return { ok: true, ...kq }
+    } catch (e) {
+      nhatKy.loi(`Đọc tệp lỗi: ${e.message}`)
+      return { ok: false, loi: e.message }
+    }
   })
 
   ipcMain.handle('kiemduyet:xuat-bao-cao', async (_su, { html }) => {
@@ -584,36 +756,46 @@ function dangKyIPC() {
     return { ok: true, canh, thongKe: promptAnh.thongKeCanh(canh) }
   })
 
-  ipcMain.handle('promptanh:prompt-mo-ta', (_su, { canh, loThu, moiLo }) => {
+  ipcMain.handle('promptanh:prompt-mo-ta', (_su, { canh, loThu, moiLo, kieu }) => {
     const caiDat = kho.docCaiDat()
     const lo = promptAnh.chiaLo(canh, moiLo || 50)
     const i = Math.min(Math.max(1, loThu || 1), lo.length) - 1
+    const tuyChon = {
+      style: (caiDat.oPrompt && caiDat.oPrompt.style) || promptAnh.MAC_DINH_O.style,
+      khoNhanVat: caiDat.khoNhanVat || [],
+      loThu: i + 1,
+      tongLo: lo.length
+    }
+    const ham = kieu === 'thuong' ? promptAnh.taoPromptMoTaCanhThuong : promptAnh.taoPromptMoTaCanh
     return {
       ok: true,
+      kieu: kieu === 'thuong' ? 'thuong' : 'json',
       tongLo: lo.length,
       loThu: i + 1,
       soCanhTrongLo: lo[i] ? lo[i].length : 0,
-      prompt: lo[i] ? promptAnh.taoPromptMoTaCanh(lo[i], {
-        style: (caiDat.oPrompt && caiDat.oPrompt.style) || promptAnh.MAC_DINH_O.style,
-        khoNhanVat: caiDat.khoNhanVat || [],
-        loThu: i + 1,
-        tongLo: lo.length
-      }) : ''
+      prompt: lo[i] ? ham(lo[i], tuyChon) : ''
     }
   })
 
-  ipcMain.handle('promptanh:doc-mo-ta', (_su, { chu }) => promptAnh.phanTichMoTaCanh(chu))
+  // Tự nhận dạng JSON hay prompt thường — người dùng khỏi phải nhớ đã xin kiểu nào.
+  ipcMain.handle('promptanh:doc-mo-ta', (_su, { chu }) => promptAnh.phanTichTraVe(chu))
 
-  ipcMain.handle('promptanh:tao', (_su, { canh, moTaTheoCanh }) => {
+  ipcMain.handle('promptanh:tao', (_su, { canh, moTaTheoCanh, promptThang }) => {
     const caiDat = kho.docCaiDat()
-    const cacPrompt = promptAnh.taoTatCaPrompt(canh, {
+    const cacPrompt = promptAnh.taoTatCaPromptHonHop(canh, {
       template: caiDat.templatePrompt || promptAnh.TEMPLATE_MAC_DINH,
       o: caiDat.oPrompt || {},
       khoNhanVat: caiDat.khoNhanVat || [],
       khoBoiCanh: caiDat.khoBoiCanh || [],
-      moTaTheoCanh: moTaTheoCanh || {}
+      moTaTheoCanh: moTaTheoCanh || {},
+      promptThang: promptThang || {}
     })
-    return { ok: true, cacPrompt, kiemTra: promptAnh.kiemTraLienTuc(cacPrompt) }
+    return {
+      ok: true,
+      cacPrompt,
+      kiemTra: promptAnh.kiemTraLienTuc(cacPrompt),
+      soNguyenVan: cacPrompt.filter((p) => p.dungNguyenVan).length
+    }
   })
 
   ipcMain.handle('promptanh:xuat', async (_su, { canh, cacPrompt, duAnMa }) => {
@@ -708,21 +890,53 @@ function dangKyIPC() {
     return { ok: true }
   })
 
+  ipcMain.handle('capnhat:kha-nang', () => khaNangCapNhat())
+
   ipcMain.handle('capnhat:kiem-tra', async () => {
-    if (!app.isPackaged) {
-      return { ok: false, lyDo: 'Đang chạy bản mã nguồn (chưa đóng gói) nên không kiểm tra cập nhật.' }
-    }
+    const kn = khaNangCapNhat()
+    if (!kn.kiemTraDuoc) return { ok: false, lyDo: kn.lyDo, khaNang: kn }
     try {
-      const { autoUpdater } = require('electron-updater')
-      autoUpdater.autoDownload = false
-      autoUpdater.logger = { info: nhatKy.tin, warn: nhatKy.canhBao, error: nhatKy.loi, debug: () => {} }
-      const kq = await autoUpdater.checkForUpdates()
+      const bo = layBoCapNhat()
+      const kq = await bo.checkForUpdates()
       const moi = kq && kq.updateInfo ? kq.updateInfo.version : null
-      return { ok: true, phienBanHienTai: app.getVersion(), phienBanMoi: moi, coBanMoi: !!moi && moi !== app.getVersion() }
+      const coBanMoi = !!moi && moi !== app.getVersion()
+      return {
+        ok: true,
+        phienBanHienTai: app.getVersion(),
+        phienBanMoi: moi,
+        coBanMoi,
+        khaNang: kn,
+        ghiChuPhatHanh: kq && kq.updateInfo ? (kq.updateInfo.releaseNotes || '') : ''
+      }
     } catch (e) {
       nhatKy.loi('Kiểm tra cập nhật lỗi:', e.message)
+      return { ok: false, lyDo: e.message, khaNang: kn }
+    }
+  })
+
+  ipcMain.handle('capnhat:tai', async () => {
+    const kn = khaNangCapNhat()
+    if (!kn.taiDuoc) return { ok: false, lyDo: kn.lyDo, khaNang: kn }
+    try {
+      nhatKy.tin('Bắt đầu tải bản cập nhật…')
+      await layBoCapNhat().downloadUpdate()
+      return { ok: true }
+    } catch (e) {
+      nhatKy.loi('Tải bản cập nhật lỗi:', e.message)
       return { ok: false, lyDo: e.message }
     }
+  })
+
+  ipcMain.handle('capnhat:cai', () => {
+    const kn = khaNangCapNhat()
+    if (!kn.caiDuoc) return { ok: false, lyDo: kn.lyDo, khaNang: kn }
+    if (!daTaiXongBanMoi) {
+      return { ok: false, lyDo: 'Chưa tải xong bản mới. Bấm "Tải bản mới" trước đã.' }
+    }
+    nhatKy.tin('Đóng app và cài bản mới…')
+    // Hoãn một nhịp để giao diện kịp vẽ dòng thông báo trước khi app đóng.
+    setTimeout(() => layBoCapNhat().quitAndInstall(false, true), 400)
+    return { ok: true }
   })
 }
 
@@ -784,6 +998,27 @@ async function chaySmoke() {
     if (!ok) thieu.push(man)
   }
 
+  // Khối nằm DƯỚI TẦM NHÌN thì ảnh chụp màn không tới, mà nút bị cắt hay chữ
+  // vỡ dấu ở đó cũng chẳng ném exception nào. Cuộn tới rồi chụp riêng.
+  const khoiDuoiTamNhin = [
+    ['cai-dat', '#gioi-han-cap-nhat', 'cai-dat-cap-nhat'],
+    ['prompt-anh', '#o-mo-ta-tra-ve', 'prompt-anh-mo-ta'],
+    ['kich-ban', '#danh-sach-phan', 'kich-ban-cac-phan']
+  ]
+  for (const [man, chon, tenAnh] of khoiDuoiTamNhin) {
+    await cuaSo.webContents.executeJavaScript(`window.smokeMoMan('${man}')\n;undefined;`).catch(() => {})
+    await cuaSo.webContents.executeJavaScript(`
+      (function () {
+        var o = document.querySelector('${chon}');
+        if (o) o.scrollIntoView({ block: 'center' });
+      })()
+    `).catch(() => {})
+    await new Promise((r) => setTimeout(r, 360))
+    const anh = await cuaSo.webContents.capturePage()
+    fs.writeFileSync(path.join(thuMucAnh, `${tenAnh}.png`), anh.toPNG())
+    nhatKy.tin(`Smoke: chụp riêng khối dưới tầm nhìn — ${tenAnh}`)
+  }
+
   const phanTuCanCo = [
     '#nhap-tu-khoa', '#nut-ghep', '#nut-tim', '#bang-ket-qua',
     '#nut-xuat-excel', '#danh-sach-khoa', '#nut-them-khoa',
@@ -794,7 +1029,11 @@ async function chaySmoke() {
     '#nut-prompt-dan-y', '#o-dan-y', '#nut-luu-dan-y', '#danh-sach-phan',
     '#o-kiem-duyet', '#nut-kiem-duyet', '#ket-qua-kiem-duyet',
     '#nut-cat-canh', '#bang-canh', '#nut-xuat-prompt', '#kho-nhan-vat',
-    '#danh-sach-tai-khoan', '#nut-them-tai-khoan', '#khung-duyet'
+    '#danh-sach-tai-khoan', '#nut-them-tai-khoan', '#khung-duyet',
+    // 0.3.0: chế độ chạy độc lập, nạp tệp Word, mô tả cảnh hai kiểu, tự cập nhật
+    '#nhap-link-nhanh', '#nut-lay-nhanh', '#nut-mo-tep-loi-thoai', '#o-loi-thoai-nhanh',
+    '#o-kich-ban-anh', '#nut-mo-tep-anh', '#o-kieu-mo-ta',
+    '#nut-tai-ban-moi', '#nut-cai-ban-moi', '#day-cap-nhat'
   ]
   const thieuPhanTu = await cuaSo.webContents.executeJavaScript(`
     (function () {
@@ -844,6 +1083,16 @@ if (!khoaMotBan && !LA_SMOKE) {
     khoDuAn = taoKhoDuAn(thuMuc)
     dangKyIPC()
     taoCuaSo()
+
+    // Tự kiểm bản mới khi mở app. Chờ 4 giây cho giao diện vẽ xong đã — kiểm
+    // ngay lúc khởi động thì cửa sổ đứng hình mấy giây, trông như treo.
+    const cd = kho.docCaiDat()
+    if (cd.tuDongKiemCapNhat && khaNangCapNhat().kiemTraDuoc) {
+      setTimeout(() => {
+        layBoCapNhat().checkForUpdates().catch((loi) =>
+          nhatKy.canhBao('Tự kiểm cập nhật lúc mở app không thành: ' + loi.message))
+      }, 4000)
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) taoCuaSo()

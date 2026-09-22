@@ -1,7 +1,7 @@
 {
   "name": "tool-y-tuong",
   "productName": "Tool Ý Tưởng",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Tìm ý tưởng, viết kịch bản và tạo prompt ảnh cho kênh YouTube",
   "main": "main.js",
   "author": "Ngoc Lam",
@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "jszip": "^3.10.2"
   },
   "devDependencies": {
     "electron": "^44.4.3",

@@ -1015,6 +1015,147 @@ async function chay() {
   })
 
   // =========================================================================
+  nhom('23. Đọc tệp Word / văn bản / phụ đề')
+
+  const docTepMod = require('../src/doc-tep')
+
+  await kiem('bóc chữ Word: giữ ngắt dòng mềm, tab thành khoảng trắng', () => {
+    const xml = '<w:body>' +
+      '<w:p><w:r><w:t>Trước</w:t></w:r><w:br/><w:r><w:t>sau khi xuống dòng</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:t>Cột A</w:t></w:r><w:tab/><w:r><w:t>Cột B</w:t></w:r></w:p>' +
+      '</w:body>'
+    // Đã làm sai một lần: thay <w:br/> thành "\n" TRƯỚC rồi mới gom nội dung
+    // các thẻ <w:t>. Cái "\n" nằm ngoài thẻ <w:t> nên bị loại luôn, hai dòng
+    // dính thành "Trướcsau khi xuống dòng".
+    assert.strictEqual(docTepMod.xmlWordSangVanBan(xml), 'Trước\nsau khi xuống dòng\n\nCột A Cột B')
+  })
+
+  await kiem('mã trường của Word KHÔNG được lọt vào kịch bản', () => {
+    const xml = '<w:body><w:p>' +
+      '<w:r><w:instrText>PAGE \\* MERGEFORMAT</w:instrText></w:r>' +
+      '<w:r><w:t>Chữ thật</w:t></w:r>' +
+      '</w:p></w:body>'
+    const ra = docTepMod.xmlWordSangVanBan(xml)
+    assert.strictEqual(ra, 'Chữ thật')
+    assert.ok(!ra.includes('MERGEFORMAT'), 'số trang và mục lục tự động là rác, không phải nội dung')
+  })
+
+  await kiem('giải mã thực thể XML đúng thứ tự (&amp; làm SAU cùng)', () => {
+    // Giải mã &amp; trước thì "&amp;lt;" ra "<" — sai. Phải ra "&lt;".
+    assert.strictEqual(docTepMod.giaiMaXML('&amp;lt;'), '&lt;')
+    assert.strictEqual(docTepMod.giaiMaXML('&lt;the&gt; &quot;x&quot;'), '<the> "x"')
+    assert.strictEqual(docTepMod.giaiMaXML('&#78;&#x41;'), 'NA')
+  })
+
+  await kiem('đọc được tệp .docx thật, dựng bằng jszip', async () => {
+    const JSZip = require('jszip')
+    const z = new JSZip()
+    z.file('word/document.xml',
+      '<w:body><w:p><w:r><w:t>Đoạn tiếng Việt có dấu đầy đủ.</w:t></w:r></w:p></w:body>')
+    const d = thuMucTam('docx')
+    const tep = path.join(d, 'thu.docx')
+    fs.writeFileSync(tep, await z.generateAsync({ type: 'nodebuffer' }))
+
+    const kq = await docTepMod.docTep(tep)
+    assert.strictEqual(kq.vanBan, 'Đoạn tiếng Việt có dấu đầy đủ.')
+    assert.strictEqual(kq.soTu, 7)   // Đoạn·tiếng·Việt·có·dấu·đầy·đủ.
+    assert.strictEqual(kq.duoi, 'docx')
+  })
+
+  await kiem('tệp giả danh .docx và .doc đời cũ đều báo lỗi hiểu được', async () => {
+    const d = thuMucTam('docx2')
+    const gia = path.join(d, 'gia.docx')
+    fs.writeFileSync(gia, 'đây không phải tệp zip')
+    await assert.rejects(() => docTepMod.docTep(gia), (e) => e.saoDinhDang === true)
+
+    const cu = path.join(d, 'cu.doc')
+    fs.writeFileSync(cu, 'x')
+    await assert.rejects(() => docTepMod.docTep(cu), (e) => /lưu thành \.docx/i.test(e.message))
+  })
+
+  await kiem('mở tệp .srt thì bóc lấy chữ, KHÔNG giữ mốc giờ', async () => {
+    const d = thuMucTam('srt')
+    const tep = path.join(d, 'phu-de.srt')
+    fs.writeFileSync(tep, [
+      '1', '00:00:01,000 --> 00:00:03,000', 'dòng thoại một', '',
+      '2', '00:00:03,000 --> 00:00:05,000', 'dòng thoại hai', ''
+    ].join('\n'))
+    const kq = await docTepMod.docTep(tep)
+    assert.ok(!/\d{2}:\d{2}/.test(kq.vanBan), 'mốc giờ phải bị bỏ')
+    assert.ok(kq.vanBan.includes('dòng thoại một'))
+  })
+
+  await kiem('tệp rỗng báo rõ chứ không trả chuỗi trắng im lặng', async () => {
+    const d = thuMucTam('rong')
+    const tep = path.join(d, 'rong.txt')
+    fs.writeFileSync(tep, '   \n\n  ')
+    await assert.rejects(() => docTepMod.docTep(tep), (e) => e.rong === true)
+  })
+
+  // =========================================================================
+  nhom('24. Mô tả cảnh: JSON hay prompt thường đều nhận')
+
+  await kiem('prompt thường nhận đủ các kiểu đánh số', () => {
+    const kq = promptAnh.phanTichPromptThuong(
+      '[1] prompt một\n2) prompt hai\nCảnh 3: prompt ba\n4. prompt bốn')
+    assert.strictEqual(kq.soDoc, 4)
+    assert.strictEqual(kq.prompt[3], 'prompt ba')
+    assert.strictEqual(kq.coDanhSo, true)
+  })
+
+  await kiem('không đánh số thì xếp tuần tự VÀ phải cảnh báo', () => {
+    const kq = promptAnh.phanTichPromptThuong('prompt một\nprompt hai')
+    assert.strictEqual(kq.soDoc, 2)
+    assert.strictEqual(kq.prompt[1], 'prompt một')
+    assert.ok(kq.canhBao, 'lô không đánh số mà không cảnh báo thì lô 2 sẽ đè lên lô 1')
+  })
+
+  await kiem('tự nhận dạng đúng JSON và prompt thường', () => {
+    assert.strictEqual(promptAnh.phanTichTraVe('[{"so":1,"subject":"x"}]').kieu, 'json')
+    assert.strictEqual(promptAnh.phanTichTraVe('[1] một prompt\n[2] prompt nữa').kieu, 'thuong')
+  })
+
+  await kiem('JSON vỡ KHÔNG được âm thầm hạ xuống đọc từng dòng', () => {
+    // Hạ xuống đọc từng dòng sẽ biến một lô JSON vỡ thành hàng chục prompt rác
+    // mà người dùng không hề biết.
+    const kq = promptAnh.phanTichTraVe('[{"so":1,"subject":')
+    assert.strictEqual(kq.kieu, 'json')
+    assert.ok(kq.loi)
+    assert.strictEqual(kq.soDoc, 0)
+  })
+
+  await kiem('prompt thường dùng NGUYÊN VĂN, không ghép template lần nữa', () => {
+    const canh = promptAnh.catCanh('The old keeper climbed the stair.', { tuMoiCanh: 27 })
+    const pr = promptAnh.taoTatCaPromptHonHop(canh, {
+      promptThang: { 1: 'prompt hoàn chỉnh của tôi, 16:9' },
+      khoNhanVat: [{ ten: 'keeper', moTa: 'grey beard' }]
+    })
+    assert.strictEqual(pr[0].prompt, 'prompt hoàn chỉnh của tôi, 16:9')
+    assert.strictEqual(pr[0].dungNguyenVan, true)
+    assert.ok(!pr[0].prompt.includes('grey beard'), 'ghép thêm lần nữa là chồng style hai lần')
+  })
+
+  await kiem('trộn được: cảnh nào có prompt thường dùng nguyên văn, còn lại ghép template', () => {
+    const chu = 'First sentence here now. Second sentence here now. Third sentence here now.'
+    const canh = promptAnh.catCanh(chu, { tuMoiCanh: 4, toiDaTu: 5 })
+    assert.ok(canh.length >= 3)
+    const pr = promptAnh.taoTatCaPromptHonHop(canh, { promptThang: { 2: 'prompt riêng cảnh 2' } })
+    assert.strictEqual(pr[1].prompt, 'prompt riêng cảnh 2')
+    assert.strictEqual(pr[1].dungNguyenVan, true)
+    assert.ok(!pr[0].dungNguyenVan)
+    assert.ok(pr[0].prompt.includes('cinematic'), 'cảnh không có prompt riêng vẫn phải ghép qua template')
+    assert.strictEqual(promptAnh.kiemTraLienTuc(pr).ok, true)
+  })
+
+  await kiem('bản xin prompt thường nói rõ định dạng trả về và số cảnh', () => {
+    const canh = promptAnh.catCanh('One sentence only here.', { tuMoiCanh: 27 })
+    const p = promptAnh.taoPromptMoTaCanhThuong(canh, { loThu: 1, tongLo: 3 })
+    assert.ok(p.includes('LÔ 1/3'))
+    assert.ok(p.includes('[1]'))
+    assert.ok(/NGUYÊN VĂN/i.test(p), 'phải nói rõ tool dùng nguyên văn, để Claude viết prompt đầy đủ')
+  })
+
+  // =========================================================================
   console.log('\n' + '─'.repeat(58))
   console.log(`TẦNG 1: ${soQua} qua, ${soTruot.length} truột`)
   if (soTruot.length) {

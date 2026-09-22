@@ -36,7 +36,12 @@ const CAI_DAT_MAC_DINH = {
   tuMoiCanh: 27,            // 25-30 từ mỗi cảnh
   soTuMucTieu: 11000,       // 10.000 - 12.000 từ
   soPhanKichBan: 8,
+
+  // Cập nhật
   tuDongKiemCapNhat: true,
+  tuDongTaiBanMoi: false,    // thấy bản mới là tự tải ngầm, không hỏi
+  tuDongCaiKhiThoat: false,  // tải xong thì tự cài lúc đóng app
+
 
   // Kênh theo dõi
   soVideoMoiKenh: 20,

@@ -20,6 +20,7 @@ let cacPhanHienTai = []
 
 let canhHienTai = []
 let moTaTheoCanh = {}
+let promptThangHienTai = {}
 let cacPromptHienTai = []
 let baoCaoHienTai = null
 
@@ -867,11 +868,12 @@ $('#nut-lay-tu-du-an').onclick = async () => {
 }
 
 $('#nut-mo-tep').onclick = async () => {
-  const kq = await window.api.moTepKichBan()
+  const kq = await window.api.moTep('Mở kịch bản cần kiểm')
   if (kq.huy) return
-  if (!kq.ok) { await baoTin('Không đọc được tệp.'); return }
-  $('#o-kiem-duyet').value = kq.chu
-  $('#ghi-chu-nguon-kiem').textContent = 'Từ tệp: ' + kq.ten
+  if (!kq.ok) { await baoTin(kq.loi || 'Không đọc được tệp.'); return }
+  $('#o-kiem-duyet').value = kq.vanBan
+  $('#ghi-chu-nguon-kiem').textContent = `Từ tệp ${kq.ten} · ${kq.soTu.toLocaleString('vi-VN')} từ · ${kq.ghiChu}`
+  $('#ghi-chu-nguon-kiem').className = 'ghi-chu ghi-chu-xanh'
 }
 
 $('#nut-kiem-duyet').onclick = async () => {
@@ -1015,11 +1017,15 @@ ${baoCaoHienTai.chinhSach.co.map((f) => `<p><b>${thoat(f.ten)}</b> (${f.mucDo}, 
 // ---------------------------------------------------------------------------
 $('#nut-cat-canh').onclick = async () => {
   const gop = Number($('#o-gop-canh').value) || 1
-  const chu = $('#o-kiem-duyet').value.trim()
+  // Đọc ô kịch bản CỦA CHÍNH MÀN NÀY. Trước đây nó đọc ké ô của màn Kiểm duyệt,
+  // nên muốn dùng Prompt ảnh là phải đi vòng qua Kiểm duyệt — đúng kiểu ràng
+  // buộc chéo làm người dùng không dùng riêng được một tính năng.
+  const chu = $('#o-kich-ban-anh').value.trim()
   const kq = await window.api.catCanh(chu, duAnHienTai, gop)
   if (!kq.ok) { await baoTin(kq.loi); return }
   canhHienTai = kq.canh
   moTaTheoCanh = {}
+  promptThangHienTai = {}
   cacPromptHienTai = []
   veThongKeCanh(kq.thongKe)
   veBangCanh()
@@ -1064,35 +1070,67 @@ $('#nut-prompt-mo-ta').onclick = async () => {
   if (!canhHienTai.length) { await baoTin('Cắt cảnh trước đã.'); return }
   const lo = Number($('#o-lo-thu').value) || 1
   const moiLo = caiDatHienTai ? Number(caiDatHienTai.soCanhMoiLo) || 50 : 50
-  const kq = await window.api.promptMoTa(canhHienTai, lo, moiLo)
+  const kieu = $('#o-kieu-mo-ta').value
+  const kq = await window.api.promptMoTa(canhHienTai, lo, moiLo, kieu)
   await chepVaBao(kq.prompt, $('#ghi-chu-lo'))
-  $('#ghi-chu-lo').textContent += ` · lô ${kq.loThu}/${kq.tongLo} (${kq.soCanhTrongLo} cảnh)`
+  $('#ghi-chu-lo').textContent +=
+    ` · lô ${kq.loThu}/${kq.tongLo} (${kq.soCanhTrongLo} cảnh, kiểu ${kq.kieu === 'thuong' ? 'prompt thường' : 'JSON'})`
   $('#o-lo-thu').max = kq.tongLo
 }
 
+// Tự nhận dạng JSON hay prompt thường — người dùng không phải nhớ đã xin kiểu nào.
 $('#nut-doc-mo-ta').onclick = async () => {
   const chu = $('#o-mo-ta-tra-ve').value
   const kq = await window.api.docMoTa(chu)
+
   if (kq.loi) {
-    $('#ket-qua-mo-ta').textContent = kq.loi
+    $('#ket-qua-mo-ta').textContent = (kq.kieu === 'json' ? 'Đọc theo kiểu JSON nhưng hỏng: ' : '') + kq.loi
     $('#ket-qua-mo-ta').className = 'ghi-chu ghi-chu-vang'
     return
   }
-  Object.assign(moTaTheoCanh, kq.moTa)
-  $('#ket-qua-mo-ta').textContent = `Đọc được ${kq.soDoc} cảnh · tổng đã có mô tả: ${Object.keys(moTaTheoCanh).length}/${canhHienTai.length}`
-  $('#ket-qua-mo-ta').className = 'ghi-chu ghi-chu-xanh'
+
+  if (kq.kieu === 'json') Object.assign(moTaTheoCanh, kq.moTa)
+  else Object.assign(promptThangHienTai, kq.prompt)
+
+  const daCo = Object.keys(moTaTheoCanh).length + Object.keys(promptThangHienTai).length
+  $('#ket-qua-mo-ta').textContent =
+    `Nhận ra kiểu ${kq.kieu === 'json' ? 'JSON' : 'prompt thường'} · đọc được ${kq.soDoc} cảnh · ` +
+    `tổng đã có: ${daCo}/${canhHienTai.length}` + (kq.canhBao ? ' · ' + kq.canhBao : '')
+  $('#ket-qua-mo-ta').className = kq.canhBao ? 'ghi-chu ghi-chu-vang' : 'ghi-chu ghi-chu-xanh'
   $('#o-mo-ta-tra-ve').value = ''
   const lo = Number($('#o-lo-thu').value) || 1
   $('#o-lo-thu').value = lo + 1
 }
 
+// ---------------------------------------------------------------------------
+// Nạp kịch bản cho màn Prompt ảnh — từ tệp trên máy hoặc từ dự án
+// ---------------------------------------------------------------------------
+$('#nut-mo-tep-anh').onclick = async () => {
+  const kq = await window.api.moTep('Mở kịch bản để cắt cảnh')
+  if (kq.huy) return
+  if (!kq.ok) { await baoTin(kq.loi || 'Không đọc được tệp.'); return }
+  $('#o-kich-ban-anh').value = kq.vanBan
+  $('#ghi-chu-nguon-anh').textContent = `Từ tệp ${kq.ten} · ${kq.soTu.toLocaleString('vi-VN')} từ · ${kq.ghiChu}`
+  $('#ghi-chu-nguon-anh').className = 'ghi-chu ghi-chu-xanh'
+}
+
+$('#nut-lay-kich-ban-du-an').onclick = async () => {
+  if (!duAnHienTai) { await baoTin('Chưa chọn dự án. Hoặc dán thẳng kịch bản vào ô, hoặc mở tệp từ máy.'); return }
+  const d = await window.api.docDuAn(duAnHienTai)
+  if (!d.kichBan) { await baoTin('Dự án này chưa có bản kịch bản nào.'); return }
+  $('#o-kich-ban-anh').value = d.kichBan
+  $('#ghi-chu-nguon-anh').textContent = `Từ dự án · ${(d.kichBan.match(/\S+/g) || []).length.toLocaleString('vi-VN')} từ`
+  $('#ghi-chu-nguon-anh').className = 'ghi-chu ghi-chu-xanh'
+}
+
 $('#nut-tao-prompt').onclick = async () => {
   if (!canhHienTai.length) { await baoTin('Cắt cảnh trước đã.'); return }
-  const kq = await window.api.taoPromptAnh(canhHienTai, moTaTheoCanh)
+  const kq = await window.api.taoPromptAnh(canhHienTai, moTaTheoCanh, promptThangHienTai)
   cacPromptHienTai = kq.cacPrompt
   veBangCanh()
   $('#ghi-chu-xuat').textContent = kq.kiemTra.ok
-    ? `Đã sinh ${cacPromptHienTai.length} prompt, số thứ tự liên tục.`
+    ? `Đã sinh ${cacPromptHienTai.length} prompt, số thứ tự liên tục` +
+      (kq.soNguyenVan ? ` · ${kq.soNguyenVan} prompt dùng nguyên văn.` : '.')
     : 'LỖI đánh số: ' + kq.kiemTra.loi.slice(0, 3).join('; ')
   $('#ghi-chu-xuat').className = kq.kiemTra.ok ? 'ghi-chu ghi-chu-xanh' : 'ghi-chu ghi-chu-vang'
 }
@@ -1257,6 +1295,183 @@ async function taiNhatKy() {
 $('#nut-tai-nhat-ky').onclick = taiNhatKy
 
 // ---------------------------------------------------------------------------
+// Lời thoại — CHẾ ĐỘ NHANH, không cần dự án
+//
+// Cả chuỗi sản xuất nối với nhau qua dự án, nhưng nhiều lúc chỉ cần đúng một
+// việc: bóc lời thoại một video, hoặc mở sẵn một tệp kịch bản ra xem. Bắt tạo
+// dự án cho những lúc đó là phiền vô ích.
+// ---------------------------------------------------------------------------
+function capNhatThongKeNhanh() {
+  const chu = $('#o-loi-thoai-nhanh').value
+  const soTu = (chu.match(/\S+/g) || []).length
+  const tuPhut = caiDatHienTai ? Number(caiDatHienTai.tuMoiPhut) || 150 : 150
+  $('#thong-ke-nhanh').textContent = soTu
+    ? `${soTu.toLocaleString('vi-VN')} từ · đọc khoảng ${(soTu / tuPhut).toFixed(1)} phút`
+    : ''
+}
+$('#o-loi-thoai-nhanh').addEventListener('input', capNhatThongKeNhanh)
+
+$('#nut-lay-nhanh').onclick = async () => {
+  const link = $('#nhap-link-nhanh').value.trim()
+  if (!link) { await baoTin('Dán một link video YouTube vào ô.'); return }
+
+  $('#nut-lay-nhanh').disabled = true
+  $('#ghi-chu-nhanh').textContent = 'Đang lấy phụ đề…'
+  $('#ghi-chu-nhanh').className = 'ghi-chu'
+  try {
+    const kq = await window.api.layLoiThoaiMotVideo(link, $('#chon-tai-khoan-cookie').value)
+    if (!kq.ok) {
+      $('#ghi-chu-nhanh').textContent = kq.loi
+      $('#ghi-chu-nhanh').className = 'ghi-chu ghi-chu-vang'
+      return
+    }
+    $('#o-loi-thoai-nhanh').value = kq.vanBan
+    $('#ghi-chu-nhanh').textContent =
+      `${kq.tieuDe || kq.videoId}${kq.tenKenh ? ' — ' + kq.tenKenh : ''} · ` +
+      `định dạng ${kq.dinhDang} · bỏ ${kq.tyLeBoLap}% dòng lặp kiểu cuộn`
+    $('#ghi-chu-nhanh').className = 'ghi-chu ghi-chu-xanh'
+    capNhatThongKeNhanh()
+  } finally {
+    $('#nut-lay-nhanh').disabled = false
+  }
+}
+
+$('#nut-mo-tep-loi-thoai').onclick = async () => {
+  const kq = await window.api.moTep('Mở tệp tư liệu hoặc kịch bản')
+  if (kq.huy) return
+  if (!kq.ok) { await baoTin(kq.loi || 'Không đọc được tệp.'); return }
+  $('#o-loi-thoai-nhanh').value = kq.vanBan
+  $('#ghi-chu-nhanh').textContent = `Từ tệp ${kq.ten} · ${kq.ghiChu}`
+  $('#ghi-chu-nhanh').className = 'ghi-chu ghi-chu-xanh'
+  capNhatThongKeNhanh()
+}
+
+$('#nut-chep-loi-thoai').onclick = async () => {
+  const chu = $('#o-loi-thoai-nhanh').value
+  if (!chu.trim()) { await baoTin('Ô còn trống.'); return }
+  await chepVaBao(chu, $('#ghi-chu-nhanh'))
+}
+
+$('#nut-luu-loi-thoai').onclick = async () => {
+  const chu = $('#o-loi-thoai-nhanh').value
+  if (!chu.trim()) { await baoTin('Ô còn trống.'); return }
+  const kq = await window.api.luuTep(chu, 'loi-thoai.md')
+  if (kq.huy) return
+  $('#ghi-chu-nhanh').textContent = 'Đã lưu: ' + kq.duongDan
+  $('#ghi-chu-nhanh').className = 'ghi-chu ghi-chu-xanh'
+}
+
+// Hai nút "đẩy sang" là cầu nối TUỲ CHỌN giữa các màn: dùng khi muốn nối, còn
+// không dùng thì từng màn vẫn chạy riêng được.
+$('#nut-day-sang-kiem-duyet').onclick = async () => {
+  const chu = $('#o-loi-thoai-nhanh').value
+  if (!chu.trim()) { await baoTin('Ô còn trống.'); return }
+  $('#o-kiem-duyet').value = chu
+  $('#ghi-chu-nguon-kiem').textContent = 'Từ chế độ nhanh của màn Lời thoại'
+  $('#ghi-chu-nguon-kiem').className = 'ghi-chu ghi-chu-xanh'
+  moMan('kiem-duyet')
+}
+
+$('#nut-day-sang-prompt').onclick = async () => {
+  const chu = $('#o-loi-thoai-nhanh').value
+  if (!chu.trim()) { await baoTin('Ô còn trống.'); return }
+  $('#o-kich-ban-anh').value = chu
+  $('#ghi-chu-nguon-anh').textContent = 'Từ chế độ nhanh của màn Lời thoại'
+  $('#ghi-chu-nguon-anh').className = 'ghi-chu ghi-chu-xanh'
+  moMan('prompt-anh')
+}
+
+// ---------------------------------------------------------------------------
+// Cập nhật: kiểm tra → tải → cài
+// ---------------------------------------------------------------------------
+let khaNangCapNhatHienTai = null
+
+async function veKhaNangCapNhat() {
+  khaNangCapNhatHienTai = await window.api.khaNangCapNhat()
+  const o = $('#gioi-han-cap-nhat')
+  if (!khaNangCapNhatHienTai) { o.textContent = ''; return }
+  o.textContent = khaNangCapNhatHienTai.lyDo || ''
+  o.className = khaNangCapNhatHienTai.lyDo ? 'ghi-chu ghi-chu-vang' : 'ghi-chu'
+}
+
+$('#nut-kiem-cap-nhat').onclick = async () => {
+  $('#ket-qua-cap-nhat').textContent = 'Đang kiểm tra…'
+  $('#ket-qua-cap-nhat').className = 'ghi-chu'
+  const kq = await window.api.kiemCapNhat()
+  if (kq.khaNang) {
+    khaNangCapNhatHienTai = kq.khaNang
+    $('#gioi-han-cap-nhat').textContent = kq.khaNang.lyDo || ''
+    $('#gioi-han-cap-nhat').className = kq.khaNang.lyDo ? 'ghi-chu ghi-chu-vang' : 'ghi-chu'
+  }
+  if (!kq.ok) {
+    $('#ket-qua-cap-nhat').textContent = kq.lyDo
+    $('#ket-qua-cap-nhat').className = 'ghi-chu ghi-chu-vang'
+    return
+  }
+  if (kq.coBanMoi) {
+    $('#ket-qua-cap-nhat').textContent = `Có bản mới ${kq.phienBanMoi} (đang dùng ${kq.phienBanHienTai})`
+    $('#ket-qua-cap-nhat').className = 'ghi-chu ghi-chu-xanh'
+    $('#nut-tai-ban-moi').hidden = !(kq.khaNang && kq.khaNang.taiDuoc)
+  } else {
+    $('#ket-qua-cap-nhat').textContent = `Đang dùng bản mới nhất (${kq.phienBanHienTai})`
+    $('#nut-tai-ban-moi').hidden = true
+  }
+}
+
+$('#nut-tai-ban-moi').onclick = async () => {
+  $('#nut-tai-ban-moi').disabled = true
+  $('#tien-do-cap-nhat').hidden = false
+  const kq = await window.api.taiBanMoi()
+  if (!kq.ok) {
+    $('#chu-cap-nhat').textContent = kq.lyDo
+    $('#chu-cap-nhat').className = 'ghi-chu ghi-chu-vang'
+    $('#nut-tai-ban-moi').disabled = false
+  }
+}
+
+$('#nut-cai-ban-moi').onclick = async () => {
+  if (!(await hoiCo('Đóng app và cài bản mới ngay bây giờ?', 'Cài và khởi động lại'))) return
+  const kq = await window.api.caiBanMoi()
+  if (!kq.ok) await baoTin(kq.lyDo)
+}
+
+window.api.nhanCapNhat((d) => {
+  const chu = $('#chu-cap-nhat')
+  const day = $('#day-cap-nhat')
+
+  if (d.giaiDoan === 'dang-kiem') {
+    $('#ket-qua-cap-nhat').textContent = 'Đang kiểm tra…'
+  } else if (d.giaiDoan === 'co-ban-moi') {
+    $('#ket-qua-cap-nhat').textContent = `Có bản mới ${d.phienBan}`
+    $('#ket-qua-cap-nhat').className = 'ghi-chu ghi-chu-xanh'
+    $('#nut-tai-ban-moi').hidden = !(khaNangCapNhatHienTai && khaNangCapNhatHienTai.taiDuoc)
+  } else if (d.giaiDoan === 'khong-co') {
+    $('#ket-qua-cap-nhat').textContent = `Đang dùng bản mới nhất (${d.phienBan})`
+  } else if (d.giaiDoan === 'dang-tai') {
+    $('#tien-do-cap-nhat').hidden = false
+    day.style.width = d.phanTram + '%'
+    chu.textContent = `Đang tải ${d.phanTram}% · ${(d.daTai / 1048576).toFixed(1)}/${(d.tong / 1048576).toFixed(1)} MB` +
+      (d.tocDo ? ` · ${(d.tocDo / 1048576).toFixed(1)} MB/s` : '')
+    chu.className = 'ghi-chu'
+  } else if (d.giaiDoan === 'da-tai-xong') {
+    day.style.width = '100%'
+    if (d.khaNang) khaNangCapNhatHienTai = d.khaNang
+    const caiDuoc = khaNangCapNhatHienTai && khaNangCapNhatHienTai.caiDuoc
+    chu.textContent = caiDuoc
+      ? `Đã tải xong bản ${d.phienBan}. Bấm "Cài ngay và khởi động lại".`
+      : `Đã tải xong bản ${d.phienBan}, nhưng bản này không tự cài được — ${khaNangCapNhatHienTai ? khaNangCapNhatHienTai.lyDo : ''}`
+    chu.className = caiDuoc ? 'ghi-chu ghi-chu-xanh' : 'ghi-chu ghi-chu-vang'
+    $('#nut-cai-ban-moi').hidden = !caiDuoc
+    $('#nut-tai-ban-moi').hidden = true
+  } else if (d.giaiDoan === 'loi') {
+    chu.textContent = 'Lỗi: ' + d.loi
+    chu.className = 'ghi-chu ghi-chu-vang'
+    $('#tien-do-cap-nhat').hidden = false
+    $('#nut-tai-ban-moi').disabled = false
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Kiểm thử tầng 2: hợp đồng dữ liệu giữa giao diện và store.js.
 //
 // Đây là loại lỗi im lặng nhất: giao diện ghi tên khoá khác với tên mà bên kia
@@ -1275,6 +1490,7 @@ window.smokeKiemKhoaCaiDat = function () {
 // ---------------------------------------------------------------------------
 taiCaiDat()
   .then(() => taiDuAn())
+  .then(() => veKhaNangCapNhat())
   .then(() => moMan('y-tuong'))
   .catch((loi) => {
     datTienDo({ phanTram: 100, viec: 'Không tải được cài đặt', chiTiet: loi.message, soLoi: 1, trangThai: 'loi' })

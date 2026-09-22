@@ -165,6 +165,26 @@
     <section class="man" id="man-loi-thoai">
       <h1>Lời thoại — bóc phụ đề video gốc</h1>
 
+      <div class="the the-doc-lap">
+        <label class="nhan">Chế độ nhanh — không cần dự án</label>
+        <p class="ghi-chu">Chỉ muốn lấy lời thoại của đúng một video, hoặc mở sẵn một tệp kịch bản trên máy:
+          dùng ngay ở đây, không phải tạo dự án, không đụng tới phần nào khác.</p>
+        <div class="hang-nut">
+          <input id="nhap-link-nhanh" class="o-dai" placeholder="Dán MỘT link video YouTube">
+          <button id="nut-lay-nhanh" class="nut nut-chinh">Lấy lời thoại</button>
+          <button id="nut-mo-tep-loi-thoai" class="nut nut-phu">Mở tệp từ máy (Word, txt…)</button>
+        </div>
+        <div id="ghi-chu-nhanh" class="ghi-chu"></div>
+        <textarea id="o-loi-thoai-nhanh" rows="9" placeholder="Kết quả hiện ở đây — sửa được, chép được, lưu được."></textarea>
+        <div class="hang-nut">
+          <button id="nut-chep-loi-thoai" class="nut nut-xanh">Chép toàn bộ</button>
+          <button id="nut-luu-loi-thoai" class="nut nut-phu">Lưu thành tệp</button>
+          <button id="nut-day-sang-kiem-duyet" class="nut nut-phu">Đẩy sang Kiểm duyệt</button>
+          <button id="nut-day-sang-prompt" class="nut nut-phu">Đẩy sang Prompt ảnh</button>
+          <span id="thong-ke-nhanh" class="ghi-chu"></span>
+        </div>
+      </div>
+
       <div class="the the-du-an">
         <label class="nhan">Dự án</label>
         <div class="hang-nut">
@@ -269,10 +289,10 @@
         <label class="nhan" for="o-kiem-duyet">Kịch bản cần kiểm</label>
         <div class="hang-nut">
           <button id="nut-lay-tu-du-an" class="nut nut-phu">Lấy kịch bản từ dự án</button>
-          <button id="nut-mo-tep" class="nut nut-phu">Mở tệp có sẵn (.txt .md .srt)</button>
+          <button id="nut-mo-tep" class="nut nut-phu">Mở tệp từ máy (Word, txt, srt…)</button>
           <span id="ghi-chu-nguon-kiem" class="ghi-chu"></span>
         </div>
-        <textarea id="o-kiem-duyet" rows="10" placeholder="Dán kịch bản vào đây, hoặc lấy từ dự án, hoặc mở tệp."></textarea>
+        <textarea id="o-kiem-duyet" rows="10" placeholder="Dán kịch bản vào đây, hoặc lấy từ dự án, hoặc mở tệp Word/txt từ máy."></textarea>
         <div class="hang-nut">
           <button id="nut-kiem-duyet" class="nut nut-chinh nut-to">Kiểm duyệt</button>
           <button id="nut-xuat-bao-cao" class="nut nut-xanh">Xuất báo cáo HTML</button>
@@ -290,6 +310,18 @@
         <label class="nhan">Dự án</label>
         <select class="chon-du-an o-dai"></select>
         <div class="ghi-chu thong-tin-du-an"></div>
+      </div>
+
+      <div class="the the-doc-lap">
+        <label class="nhan">Kịch bản dùng để cắt cảnh</label>
+        <p class="ghi-chu">Màn này chạy độc lập được: dán thẳng kịch bản vào đây hoặc mở tệp từ máy,
+          không cần dự án, không cần đi qua màn Kiểm duyệt.</p>
+        <div class="hang-nut">
+          <button id="nut-mo-tep-anh" class="nut nut-phu">Mở tệp từ máy (Word, txt…)</button>
+          <button id="nut-lay-kich-ban-du-an" class="nut nut-phu">Lấy kịch bản từ dự án</button>
+          <span id="ghi-chu-nguon-anh" class="ghi-chu"></span>
+        </div>
+        <textarea id="o-kich-ban-anh" rows="7" placeholder="Dán kịch bản vào đây, hoặc mở tệp Word/txt, hoặc lấy từ dự án."></textarea>
       </div>
 
       <div class="the">
@@ -326,10 +358,20 @@
           Làm bước này thì prompt sát hình ảnh hơn hẳn. Chia lô để câu trả lời không bị cắt giữa chừng.</p>
         <div class="hang-nut">
           <label class="o-inline">Lô số <input type="number" id="o-lo-thu" min="1" value="1"></label>
+          <label class="o-inline">Kiểu trả về
+            <select id="o-kieu-mo-ta">
+              <option value="json">JSON (ghép qua template)</option>
+              <option value="thuong">Prompt thường (dùng nguyên văn)</option>
+            </select>
+          </label>
           <button id="nut-prompt-mo-ta" class="nut nut-chinh">Chép prompt lô này</button>
           <span id="ghi-chu-lo" class="ghi-chu"></span>
         </div>
-        <textarea id="o-mo-ta-tra-ve" rows="5" placeholder="Dán JSON Claude trả về vào đây (dán được cả khi có lời dẫn hoặc khối mã)"></textarea>
+        <p class="ghi-chu"><b>JSON</b> mang theo từng trường riêng (ánh sáng, không khí, góc máy) nên tool ghép
+          được qua template và chèn mô tả nhân vật — nhưng hỏng một dấu phẩy là vỡ cả lô.
+          <b>Prompt thường</b> mỗi dòng một prompt, chịu được lời dẫn và cắt ngang, dùng nguyên văn.
+          Dán kiểu nào tool cũng tự nhận ra.</p>
+        <textarea id="o-mo-ta-tra-ve" rows="5" placeholder="Dán kết quả Claude trả về — JSON hay prompt thường đều được"></textarea>
         <div class="hang-nut">
           <button id="nut-doc-mo-ta" class="nut nut-xanh">Đọc JSON</button>
           <span id="ket-qua-mo-ta" class="ghi-chu"></span>
@@ -431,11 +473,22 @@
 
       <div class="the">
         <label class="nhan">Cập nhật</label>
-        <label class="o-danh-dau"><input type="checkbox" data-khoa="tuDongKiemCapNhat"> Tự kiểm tra bản mới khi mở app</label>
+        <div class="luoi-cai-dat">
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="tuDongKiemCapNhat"> Tự kiểm tra bản mới khi mở app</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="tuDongTaiBanMoi"> Thấy bản mới thì tự tải ngầm</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="tuDongCaiKhiThoat"> Tải xong thì tự cài lúc đóng app</label>
+        </div>
         <div class="hang-nut">
           <button id="nut-kiem-cap-nhat" class="nut nut-phu">Kiểm tra bản mới</button>
+          <button id="nut-tai-ban-moi" class="nut nut-chinh" hidden>Tải bản mới về</button>
+          <button id="nut-cai-ban-moi" class="nut nut-xanh" hidden>Cài ngay và khởi động lại</button>
           <span id="ket-qua-cap-nhat" class="ghi-chu"></span>
         </div>
+        <div id="tien-do-cap-nhat" class="hop-uoc" hidden>
+          <div id="thanh-cap-nhat"><div id="day-cap-nhat"></div></div>
+          <div id="chu-cap-nhat" class="ghi-chu"></div>
+        </div>
+        <div id="gioi-han-cap-nhat" class="ghi-chu"></div>
       </div>
 
       <div class="hang-nut">

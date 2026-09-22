@@ -359,3 +359,20 @@ td.tieu-de a:hover { color: var(--cam); text-decoration: underline; }
 /* ---------------- Thẻ dự án ---------------- */
 .the-du-an { border-left: 3px solid var(--ngoc); }
 .chon-du-an { min-width: 280px; }
+
+/* ---------------- Khối chạy độc lập (bản 0.3.0) ----------------
+   Viền tím để phân biệt ngay: đây là phần dùng được một mình, không cần dự án,
+   không phụ thuộc màn nào khác. */
+.the-doc-lap { border-left: 3px solid var(--tim); }
+.the-doc-lap textarea { margin-top: 10px; }
+
+/* ---------------- Thanh tiến độ tải bản cập nhật ---------------- */
+#thanh-cap-nhat {
+  height: 8px; background: #0d1220; border-radius: 999px;
+  overflow: hidden; margin: 8px 0 6px;
+}
+#day-cap-nhat {
+  height: 100%; width: 0%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--cam), #ff9f4d);
+  transition: width .25s ease;
+}

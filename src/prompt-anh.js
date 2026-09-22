@@ -249,6 +249,53 @@ function taoPromptMoTaCanh(loCanh, { style = MAC_DINH_O.style, khoNhanVat = [], 
   return khoi.join('\n\n')
 }
 
+// Bản xin PROMPT THƯỜNG — dùng khi không muốn dính rủi ro JSON vỡ.
+function taoPromptMoTaCanhThuong(loCanh, {
+  style = MAC_DINH_O.style,
+  khoNhanVat = [],
+  loThu = 1,
+  tongLo = 1,
+  amBan = MAC_DINH_O.amBan
+} = {}) {
+  const khoi = []
+
+  khoi.push([
+    `===== LÔ ${loThu}/${tongLo} — VIẾT PROMPT ẢNH =====`,
+    `Phong cách ảnh chung, đưa vào MỌI prompt: ${style}`,
+    '',
+    'Với mỗi cảnh dưới đây, viết MỘT prompt ảnh hoàn chỉnh bằng tiếng Anh.',
+    'Chỉ tả thứ NHÌN THẤY ĐƯỢC. Không tả cảm xúc trừu tượng, không tả điều đang nghĩ.'
+  ].join('\n'))
+
+  if (khoNhanVat.length) {
+    khoi.push([
+      '===== NHÂN VẬT CỐ ĐỊNH — chép NGUYÊN VĂN đoạn mô tả vào prompt =====',
+      ...khoNhanVat.map((n) => `  · ${n.ten}: ${n.moTa}`),
+      '',
+      'Cảnh nào có các nhân vật này thì chép y nguyên đoạn mô tả ngoại hình vào',
+      'prompt, không diễn giải lại bằng lời khác — đó là cách giữ cho mặt nhân',
+      'vật giống nhau qua hàng trăm cảnh.'
+    ].join('\n'))
+  }
+
+  khoi.push(['===== CÁC CẢNH =====', ...loCanh.map((c) => `[${c.so}] ${c.chu}`)].join('\n'))
+
+  khoi.push([
+    '===== ĐỊNH DẠNG TRẢ VỀ =====',
+    'Mỗi prompt một dòng, mở đầu bằng số cảnh trong ngoặc vuông. Không lời dẫn,',
+    'không khối mã, không dòng trống giữa các prompt:',
+    '',
+    '[1] <prompt đầy đủ của cảnh 1>',
+    '[2] <prompt đầy đủ của cảnh 2>',
+    '',
+    `Đủ ${loCanh.length} dòng, số trong ngoặc đúng bằng số ở trên.`,
+    `Prompt đã gồm sẵn phong cách chung, tool sẽ dùng NGUYÊN VĂN chứ không ghép thêm.`,
+    `(Phần loại trừ tool tự thêm, không cần viết: ${amBan})`
+  ].join('\n'))
+
+  return khoi.join('\n\n')
+}
+
 // Đọc JSON Claude trả về. Chịu được cả khi bị bọc trong khối mã hoặc kèm lời dẫn.
 function phanTichMoTaCanh(chu) {
   const s = String(chu || '').trim()
@@ -284,6 +331,114 @@ function phanTichMoTaCanh(chu) {
     }
   }
   return { moTa, soDoc: Object.keys(moTa).length, loi: null }
+}
+
+// ---------------------------------------------------------------------------
+// Kiểu PROMPT THƯỜNG — mỗi dòng một prompt, không cần JSON
+//
+// JSON gọn cho máy nhưng hay vỡ: Claude thêm một câu dẫn, bỏ một dấu phẩy, hay
+// bị cắt giữa chừng là hỏng cả lô. Kiểu prompt thường chịu được hết những
+// chuyện đó, đổi lại không mang theo được các trường riêng lẻ (lighting, mood…)
+// nên prompt dùng nguyên văn chứ không ghép qua template.
+// ---------------------------------------------------------------------------
+
+function phanTichPromptThuong(chu, { soCanhToiDa = 0 } = {}) {
+  const s = String(chu || '').trim()
+  if (!s) return { prompt: {}, soDoc: 0, loi: 'Chưa dán gì vào.' }
+
+  // Bỏ vỏ khối mã nếu có.
+  let than = s
+  const khoiMa = s.match(/```(?:\w+)?\s*([\s\S]*?)```/)
+  if (khoiMa) than = khoiMa[1]
+
+  const prompt = {}
+  let tiepTheo = 1
+  let coDanhSo = false
+
+  for (const dongTho of than.split(/\r?\n/)) {
+    const dong = dongTho.trim()
+    if (!dong) continue
+    // Bỏ dòng dẫn kiểu "Đây là kết quả:" — không có nội dung prompt thật.
+    if (/^(đây là|here (is|are)|kết quả|result)\b[^,]*:?$/i.test(dong)) continue
+
+    // Nhận các kiểu đánh số: "1." "1)" "[1]" "Cảnh 1:" "Scene 1 -"
+    const danhSo = dong.match(/^(?:\[(\d+)\]|(?:cảnh|canh|scene)\s*(\d+)|(\d+))\s*[.)\-:–]\s*(.+)$/i)
+      || dong.match(/^\[(\d+)\]\s*(.+)$/)
+
+    if (danhSo) {
+      const so = Number(danhSo[1] || danhSo[2] || danhSo[3])
+      const noiDung = (danhSo[4] || danhSo[2] || '').trim()
+      if (Number.isFinite(so) && so > 0 && noiDung) {
+        prompt[so] = noiDung
+        coDanhSo = true
+        tiepTheo = so + 1
+        continue
+      }
+    }
+
+    // Không đánh số: xếp tuần tự. Đây là lý do phải giữ nguyên thứ tự dòng.
+    prompt[tiepTheo] = dong
+    tiepTheo++
+  }
+
+  const soDoc = Object.keys(prompt).length
+  if (!soDoc) return { prompt: {}, soDoc: 0, loi: 'Không đọc được dòng prompt nào.' }
+
+  let canhBao = null
+  if (!coDanhSo) {
+    canhBao = `Các dòng KHÔNG đánh số nên tool xếp tuần tự từ cảnh 1. ` +
+      `Nếu lô này không bắt đầu từ cảnh 1 thì phải xin Claude đánh số lại.`
+  }
+  if (soCanhToiDa && soDoc > soCanhToiDa) {
+    canhBao = `Đọc được ${soDoc} dòng nhưng chỉ có ${soCanhToiDa} cảnh — thừa ${soDoc - soCanhToiDa} dòng, nhiều khả năng lẫn lời dẫn.`
+  }
+
+  return { prompt, soDoc, loi: null, canhBao, coDanhSo }
+}
+
+// Tự nhận dạng: dán JSON thì đọc JSON, dán prompt thường thì đọc prompt thường.
+// Người dùng không phải nhớ mình đã xin Claude kiểu nào.
+function phanTichTraVe(chu) {
+  const s = String(chu || '').trim()
+  if (!s) return { kieu: null, loi: 'Chưa dán gì vào.', soDoc: 0 }
+
+  // Có dấu hiệu của mảng JSON thì thử JSON trước.
+  const coVeJSON = /\[\s*\{/.test(s) && /"so"\s*:/.test(s)
+  if (coVeJSON) {
+    const kq = phanTichMoTaCanh(s)
+    if (!kq.loi) return { kieu: 'json', moTa: kq.moTa, soDoc: kq.soDoc, loi: null }
+    // JSON hỏng thì nói rõ là hỏng JSON, đừng âm thầm hạ xuống đọc từng dòng —
+    // làm vậy sẽ biến một lô JSON vỡ thành hàng chục prompt rác.
+    return { kieu: 'json', loi: kq.loi, soDoc: 0 }
+  }
+
+  const kq = phanTichPromptThuong(s)
+  return { kieu: 'thuong', prompt: kq.prompt, soDoc: kq.soDoc, loi: kq.loi, canhBao: kq.canhBao }
+}
+
+// Prompt thường dùng NGUYÊN VĂN, không ghép qua template — vì nó đã là prompt
+// hoàn chỉnh rồi, ghép thêm lần nữa là chồng style hai lần.
+function ghepPromptThuong(canh, chuPrompt, { khoNhanVat = [], amBan = MAC_DINH_O.amBan } = {}) {
+  const nhanVat = timTrongCanh(canh.chu, khoNhanVat)
+  return {
+    so: canh.so,
+    ten: canh.ten,
+    chuCanh: canh.chu,
+    prompt: String(chuPrompt || '').replace(/\s+/g, ' ').trim(),
+    amBan,
+    nhanVat: nhanVat.map((n) => n.ten),
+    boiCanh: [],
+    dungNguyenVan: true
+  }
+}
+
+function taoTatCaPromptHonHop(canh, tuyChon = {}) {
+  const moTa = tuyChon.moTaTheoCanh || {}
+  const thang = tuyChon.promptThang || {}
+  return canh.map((c) => {
+    if (thang[c.so]) return ghepPromptThuong(c, thang[c.so], tuyChon)
+    return ghepPrompt(c, { ...tuyChon, moTaCanh: moTa[c.so] || null })
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -341,7 +496,12 @@ module.exports = {
   taoTatCaPrompt,
   chiaLo,
   taoPromptMoTaCanh,
+  taoPromptMoTaCanhThuong,
   phanTichMoTaCanh,
+  phanTichPromptThuong,
+  phanTichTraVe,
+  ghepPromptThuong,
+  taoTatCaPromptHonHop,
   xuatPromptsTxt,
   xuatTenAnh,
   xuatScenesJson,

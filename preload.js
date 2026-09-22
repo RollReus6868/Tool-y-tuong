@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('api', {
   trangThaiYtDlp: () => goi('ytdlp:trang-thai'),
   taiYtDlp: () => goi('ytdlp:tai'),
   layLoiThoai: (chuNhap, duAnMa, taiKhoanId) => goi('loithoai:lay', { chuNhap, duAnMa, taiKhoanId }),
+  layLoiThoaiMotVideo: (link, taiKhoanId) => goi('loithoai:mot-video', { link, taiKhoanId }),
+  luuTep: (chu, tenGoiY) => goi('tep:luu', { chu, tenGoiY }),
 
   // Dự án
   danhSachDuAn: () => goi('duan:danh-sach'),
@@ -46,16 +48,19 @@ contextBridge.exposeInMainWorld('api', {
   gopKichBan: (duAnMa) => goi('kichban:gop', { duAnMa }),
   luuKichBanTrucTiep: (duAnMa, chu) => goi('kichban:luu-truc-tiep', { duAnMa, chu }),
 
+  // Mở tệp từ máy — dùng chung cho Lời thoại, Kiểm duyệt và Prompt ảnh
+  moTep: (tieuDe) => goi('tep:doc', { tieuDe }),
+
   // Kiểm duyệt
   kiemDuyet: (chu, banGoc, duAnMa) => goi('kiemduyet:chay', { chu, banGoc, duAnMa }),
-  moTepKichBan: () => goi('kiemduyet:mo-tep'),
   xuatBaoCao: (html) => goi('kiemduyet:xuat-bao-cao', { html }),
 
   // Prompt ảnh
   catCanh: (chu, duAnMa, gopCanh) => goi('promptanh:cat-canh', { chu, duAnMa, gopCanh }),
-  promptMoTa: (canh, loThu, moiLo) => goi('promptanh:prompt-mo-ta', { canh, loThu, moiLo }),
+  promptMoTa: (canh, loThu, moiLo, kieu) => goi('promptanh:prompt-mo-ta', { canh, loThu, moiLo, kieu }),
   docMoTa: (chu) => goi('promptanh:doc-mo-ta', { chu }),
-  taoPromptAnh: (canh, moTaTheoCanh) => goi('promptanh:tao', { canh, moTaTheoCanh }),
+  taoPromptAnh: (canh, moTaTheoCanh, promptThang) =>
+    goi('promptanh:tao', { canh, moTaTheoCanh, promptThang }),
   xuatPromptAnh: (canh, cacPrompt, duAnMa) => goi('promptanh:xuat', { canh, cacPrompt, duAnMa }),
   ghiKho: (loai, danhSach) => goi('kho:ghi', { loai, danhSach }),
 
@@ -77,9 +82,13 @@ contextBridge.exposeInMainWorld('api', {
   moNgoai: (url) => goi('mo-ngoai', url),
   moThuMuc: (duongDan) => goi('mo-thu-muc', duongDan),
   kiemCapNhat: () => goi('capnhat:kiem-tra'),
+  khaNangCapNhat: () => goi('capnhat:kha-nang'),
+  taiBanMoi: () => goi('capnhat:tai'),
+  caiBanMoi: () => goi('capnhat:cai'),
 
   // Sự kiện đẩy từ tiến trình chính
   nhanTienDo: (ham) => ipcRenderer.on('tien-do', (_su, duLieu) => ham(duLieu)),
   nhanDuyetThayDoi: (ham) => ipcRenderer.on('duyet-thay-doi', (_su, duLieu) => ham(duLieu)),
-  nhanCuaSoDoiCo: (ham) => ipcRenderer.on('cua-so-doi-co', () => ham())
+  nhanCuaSoDoiCo: (ham) => ipcRenderer.on('cua-so-doi-co', () => ham()),
+  nhanCapNhat: (ham) => ipcRenderer.on('cap-nhat', (_su, duLieu) => ham(duLieu))
 })
