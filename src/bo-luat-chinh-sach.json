@@ -1,0 +1,102 @@
+{
+  "phienBan": "2026-09-22",
+  "ghiChu": "Bộ luật này SỬA ĐƯỢC. Mỗi mục: ma, ten, mucDo (đỏ = có thể bị gỡ video hoặc gậy, vàng = nhiều khả năng bị giới hạn quảng cáo), tuKhoa, giaiThich, huongSua. Quét từ khóa chỉ GẮN CỜ RỦI RO, không xác nhận an toàn — nhiều vi phạm nằm ở cách kể chứ không nằm ở một từ nào cả.",
+  "luat": [
+    {
+      "ma": "chinh-tri",
+      "ten": "Chính trị và bầu cử",
+      "mucDo": "vàng",
+      "tuKhoa": ["trump", "biden", "election", "elections", "democrat", "democrats", "republican", "republicans", "congress", "senate", "white house", "impeachment", "ballot", "voter fraud", "rigged election"],
+      "giaiThich": "Nội dung chính trị hiếm khi bị gỡ nhưng rất hay bị giới hạn quảng cáo. Riêng cáo buộc gian lận bầu cử không có bằng chứng thì còn bị coi là thông tin sai lệch.",
+      "huongSua": "Kể theo lối tường thuật sự kiện có mốc thời gian và nguồn, tránh tính từ cảm xúc và tránh khẳng định về gian lận."
+    },
+    {
+      "ma": "chung-toc",
+      "ten": "Chủng tộc và sắc tộc",
+      "mucDo": "vàng",
+      "tuKhoa": ["black america", "african american", "racism", "racist", "segregation", "slavery", "civil rights", "white supremacy", "jim crow", "apartheid"],
+      "giaiThich": "Chủ đề lịch sử chủng tộc hoàn toàn đăng được, nhưng hệ thống quảng cáo xếp vào nhóm nhạy cảm nên hay bị giới hạn. Vấn đề chỉ thành nghiêm trọng khi kịch bản khái quát hoá hoặc hạ thấp một nhóm người.",
+      "huongSua": "Bám vào sự kiện lịch sử cụ thể và con người cụ thể. Không khái quát hoá về cả một nhóm, không so sánh hơn kém giữa các nhóm."
+    },
+    {
+      "ma": "ton-giao",
+      "ten": "Tôn giáo nhạy cảm",
+      "mucDo": "vàng",
+      "tuKhoa": ["blasphemy", "heresy", "infidel", "false prophet", "cult", "apostate"],
+      "giaiThich": "Kể chuyện Kinh Thánh là bình thường. Cờ này bật khi kịch bản chuyển sang phán xét hoặc công kích một tín ngưỡng.",
+      "huongSua": "Kể chuyện và nêu các cách diễn giải khác nhau, thay vì tuyên bố cách nào là sai."
+    },
+    {
+      "ma": "bao-luc",
+      "ten": "Bạo lực và hình ảnh ghê rợn",
+      "mucDo": "đỏ",
+      "tuKhoa": ["gore", "decapitat", "mutilat", "torture", "dismember", "graphic footage", "beheading", "massacre"],
+      "giaiThich": "Mô tả bạo lực chi tiết, nhất là kèm hình ảnh, là nhóm bị gỡ video chứ không chỉ mất quảng cáo.",
+      "huongSua": "Nói có chuyện gì xảy ra, đừng tả cảnh. Bỏ hết tính từ mô tả thương tích."
+    },
+    {
+      "ma": "tu-hai",
+      "ten": "Tự hại và tự tử",
+      "mucDo": "đỏ",
+      "tuKhoa": ["suicide", "kill yourself", "self-harm", "how to end my life", "overdose on"],
+      "giaiThich": "Nhóm nhạy cảm nhất. Nhắc tới trong bối cảnh tưởng niệm hay phòng ngừa thì được, nhưng mô tả cách thức thì bị xử lý nặng.",
+      "huongSua": "Bỏ mọi chi tiết về cách thức. Nếu chủ đề bắt buộc phải nhắc, thêm thông tin về đường dây hỗ trợ."
+    },
+    {
+      "ma": "y-te-sai",
+      "ten": "Thông tin y tế sai lệch",
+      "mucDo": "đỏ",
+      "tuKhoa": ["miracle cure", "cures cancer", "doctors don't want you to know", "big pharma hiding", "vaccine causes autism", "natural remedy cures"],
+      "giaiThich": "Khẳng định y tế trái với đồng thuận khoa học bị gỡ, kể cả khi trình bày dưới dạng 'có người nói rằng'.",
+      "huongSua": "Bỏ mọi khẳng định chữa khỏi. Nếu nhắc tới cách chữa dân gian thì phải nói rõ chưa được kiểm chứng."
+    },
+    {
+      "ma": "ai-chuyen-gia",
+      "ten": "Nhân vật AI đóng vai chuyên gia",
+      "mucDo": "đỏ",
+      "tuKhoa": ["as a doctor i", "as your financial advisor", "as a lawyer i advise", "i am a licensed", "my medical advice"],
+      "giaiThich": "Tháng 7/2026 YouTube nêu đích danh: nhân vật nhân tạo tự nhận là chuyên gia y tế, pháp lý, tài chính hay chính trị thì không bật tiền được.",
+      "huongSua": "Bỏ vai chuyên gia. Dẫn nguồn thật và nói rõ đây là nội dung kể chuyện, không phải tư vấn."
+    },
+    {
+      "ma": "gay-soc",
+      "ten": "Giật gân và câu tương tác",
+      "mucDo": "vàng",
+      "tuKhoa": ["you won't believe", "shocking truth", "they don't want you to see", "gone wrong", "banned video", "deleted footage"],
+      "giaiThich": "Không cấm, nhưng nằm đúng nhóm 'unsatisfying or off-putting content' mà YouTube nêu: dựa vào thao túng cảm xúc và hình ảnh gây hiểu nhầm.",
+      "huongSua": "Đổi tiêu đề và câu mở thành lời hứa cụ thể mà nội dung thật sự trả được."
+    },
+    {
+      "ma": "khuon-mau",
+      "ten": "Nội dung khuôn mẫu, ít góc nhìn riêng",
+      "mucDo": "vàng",
+      "tuKhoa": ["in this video we will explore", "let's dive in", "without further ado", "buckle up", "stay tuned till the end"],
+      "giaiThich": "Các câu này là dấu hiệu của kịch bản đổ theo khuôn. YouTube nói rõ nội dung trông như làm từ template, lặp lại giữa các video, ít bình luận riêng thì không bật được tiền.",
+      "huongSua": "Thay bằng câu mở gắn với đúng câu chuyện này. Và tự hỏi: phần nào trong kịch bản là nhận định của riêng mình?"
+    },
+    {
+      "ma": "vu-khi-ma-tuy",
+      "ten": "Vũ khí và ma tuý",
+      "mucDo": "đỏ",
+      "tuKhoa": ["how to make a bomb", "build a gun", "buy drugs online", "how to cook meth", "silencer tutorial"],
+      "giaiThich": "Hướng dẫn chế tạo hoặc mua bán bị gỡ ngay, không có ngoại lệ vì mục đích giáo dục.",
+      "huongSua": "Bỏ hoàn toàn phần hướng dẫn. Nhắc tới ở mức sự kiện lịch sử thì được."
+    },
+    {
+      "ma": "tre-em",
+      "ten": "Nội dung liên quan trẻ em",
+      "mucDo": "đỏ",
+      "tuKhoa": ["child abuse", "minor victim", "underage"],
+      "giaiThich": "Nhóm bị kiểm duyệt nghiêm nhất. Ngay cả kể chuyện lịch sử cũng cần hết sức thận trọng về cách mô tả.",
+      "huongSua": "Nói ở mức sự kiện, tuyệt đối không mô tả chi tiết, và cân nhắc bỏ hẳn chủ đề nếu không thật sự cần."
+    },
+    {
+      "ma": "chui-the",
+      "ten": "Chửi thề",
+      "mucDo": "vàng",
+      "tuKhoa": ["fuck", "shit", "bitch", "asshole", "bastard"],
+      "giaiThich": "Chửi thề nặng trong 7 giây đầu hoặc lặp nhiều lần làm video bị giới hạn quảng cáo.",
+      "huongSua": "Bỏ hẳn ở phần mở đầu. Phần sau dùng thưa thớt hoặc thay bằng từ nhẹ hơn."
+    }
+  ]
+}

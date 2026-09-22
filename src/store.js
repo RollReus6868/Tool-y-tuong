@@ -5,8 +5,23 @@
 const fs = require('fs')
 const path = require('path')
 
+// Các khoá là MẢNG hoặc ĐỐI TƯỢNG có giao diện riêng, không phải một ô nhập
+// đơn giản. Kiểm thử tầng 2 bỏ qua chúng khi dò "mọi khoá cài đặt có ô tương
+// ứng không" — thiếu danh sách này là smoke báo đỏ oan.
+const KHOA_PHUC_TAP = [
+  'khoaApi', 'kenhTheoDoi', 'khoSkill', 'taiKhoan',
+  'khoNhanVat', 'khoBoiCanh', 'oPrompt'
+]
+
 const CAI_DAT_MAC_DINH = {
   khoaApi: [],              // [{ id, ten, khoa }]
+  kenhTheoDoi: [],          // [{ kenhId, ten, dinhDanh, subKenh }]
+  khoSkill: [],             // [{ id, ten, noiDung, soTu }]
+  taiKhoan: [],             // [{ id, ten }] — KHÔNG bao giờ chứa mật khẩu
+  khoNhanVat: [],           // [{ ten, moTa, tuKhoa: [] }]
+  khoBoiCanh: [],
+  oPrompt: {},              // ô thay thế của template prompt ảnh
+
   soVideoMoiTuKhoa: 25,
   soNgay: 14,
   boShorts: true,           // luôn bật: kênh này chỉ làm video dài
@@ -21,7 +36,20 @@ const CAI_DAT_MAC_DINH = {
   tuMoiCanh: 27,            // 25-30 từ mỗi cảnh
   soTuMucTieu: 11000,       // 10.000 - 12.000 từ
   soPhanKichBan: 8,
-  tuDongKiemCapNhat: true
+  tuDongKiemCapNhat: true,
+
+  // Kênh theo dõi
+  soVideoMoiKenh: 20,
+  nguongNoView: 3,          // vượt trung vị kênh bao nhiêu lần thì gắn NỔ VIEW
+  nguongTot: 1.8,
+
+  // Lời thoại
+  dungCookie: false,        // dùng cookie tài khoản khi YouTube đòi đăng nhập
+
+  // Prompt ảnh
+  gopCanh: 1,               // 2 = gộp 2 cảnh một ảnh, còn nửa số ảnh phải render
+  templatePrompt: '',       // rỗng = dùng template mặc định trong prompt-anh.js
+  soCanhMoiLo: 50           // số cảnh mỗi lô khi xin Claude mô tả
 }
 
 function docJSON(duongDan, macDinh) {
@@ -55,4 +83,4 @@ function taoKho(thuMuc) {
   }
 }
 
-module.exports = { taoKho, docJSON, ghiJSON, CAI_DAT_MAC_DINH }
+module.exports = { taoKho, docJSON, ghiJSON, CAI_DAT_MAC_DINH, KHOA_PHUC_TAP }

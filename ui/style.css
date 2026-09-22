@@ -256,3 +256,106 @@ td.tieu-de a:hover { color: var(--cam); text-decoration: underline; }
 }
 #hop-thoai-chu { line-height: 1.65; margin-bottom: 16px; }
 #hop-thoai-nut { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ======================================================================
+   Các màn thêm ở bản 0.2.0
+   ====================================================================== */
+
+/* ---------------- Thẻ con dùng trong danh sách ---------------- */
+.the-con {
+  background: var(--the-sang); border: 1px solid var(--vien);
+  border-radius: 9px; padding: 12px 14px; margin-bottom: 10px;
+}
+.the-con.the-xong { border-left: 3px solid var(--ngoc); }
+.the-con.the-loi { border-left: 3px solid var(--do); }
+.the-con textarea { margin-top: 8px; }
+.the-do { border-left: 3px solid var(--do); }
+
+.xem-truoc {
+  margin-top: 8px; padding: 10px 12px; background: #131a2a;
+  border-radius: 7px; font-size: 12.5px; color: var(--chu-mo);
+  line-height: 1.65; max-height: 92px; overflow: hidden;
+}
+
+.nhan-nho {
+  display: block; margin: 12px 0 6px; font-size: 11.5px;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--chu-mo);
+}
+.o-inline { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--chu-mo); }
+.o-inline input { width: 92px; }
+/* Ô chọn phải tự co theo chữ dài nhất. Ép 92px thì "1 cảnh = 1 ảnh" hiện ra
+   thành "1 cảnh :" — người dùng không biết mình đang chọn gì. */
+.o-inline select { width: auto; min-width: 170px; }
+
+.ghi-chu-xanh { color: var(--ngoc); }
+.ghi-chu-vang { color: var(--vang); }
+.canh-bao-manh { color: var(--vang); }
+
+/* ---------------- Ô số lớn trong báo cáo ---------------- */
+.luoi-so { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+.luoi-so > div {
+  flex: 1 1 130px; background: #131a2a; border: 1px solid var(--vien);
+  border-radius: 9px; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px;
+}
+.so-to { font-size: 25px; font-weight: 700; color: var(--cam); line-height: 1.15; }
+.luoi-so span:last-child { font-size: 12px; color: var(--chu-mo); }
+
+/* ---------------- Cụm trùng, cờ chính sách ---------------- */
+.danh-sach-cum { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+.cum-trung {
+  background: rgba(255, 122, 26, .12); border-left: 3px solid var(--cam);
+  padding: 8px 11px; border-radius: 0 7px 7px 0; font-size: 13px; line-height: 1.6;
+}
+.co-chinh-sach {
+  padding: 11px 13px; border-radius: 0 8px 8px 0; margin-bottom: 9px;
+  font-size: 13px; line-height: 1.65;
+}
+.co-do { background: rgba(255, 77, 79, .12); border-left: 3px solid var(--do); }
+.co-vang { background: rgba(255, 204, 51, .11); border-left: 3px solid var(--vang); }
+.huong-sua { margin-top: 6px; color: var(--ngoc); }
+
+.danh-sach-buoc .sua-do { color: var(--do); }
+.danh-sach-buoc .sua-vang { color: var(--vang); }
+.danh-sach-buoc .sua-xanh { color: var(--ngoc); }
+
+.nhan-do { background: var(--do); color: #fff; }
+.nhan-vang { background: var(--vang); color: #2a2100; }
+
+/* ---------------- Bản đồ nhiệt ---------------- */
+.ban-do-nhiet { line-height: 0; margin: 12px 0; }
+.o-nhiet {
+  display: inline-block; width: 11px; height: 11px; margin: 1px;
+  background: var(--cam); border-radius: 2px;
+}
+
+/* ---------------- Kho nhân vật ---------------- */
+.dong-nhan-vat {
+  display: flex; align-items: center; gap: 12px; padding: 9px 12px;
+  background: #131a2a; border: 1px solid var(--vien); border-radius: 8px; margin-bottom: 7px;
+}
+.dong-nhan-vat b { flex: 0 0 170px; color: var(--cam); }
+.dong-nhan-vat .ghi-chu { flex: 1; }
+
+/* ---------------- Trình duyệt trong app ---------------- */
+#thanh-tab { display: flex; gap: 7px; flex-wrap: wrap; margin: 10px 0; }
+.tab {
+  background: var(--the-sang); border: 1px solid var(--vien); color: var(--chu-mo);
+  border-radius: 7px 7px 0 0; padding: 7px 11px; font-size: 12.5px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 9px;
+}
+.tab-chon { background: var(--cam); color: #1a1206; border-color: var(--cam); font-weight: 600; }
+.dong-tab { opacity: .65; font-size: 15px; line-height: 1; }
+.dong-tab:hover { opacity: 1; color: var(--do); }
+
+/* Vùng dành chỗ cho lớp trình duyệt thật. Nó KHÔNG phải phần tử HTML — app
+   tính toạ độ ô này rồi đặt WebContentsView đè lên đúng chỗ đó. */
+#khung-duyet {
+  height: 560px; border: 1px solid var(--vien); border-radius: 9px;
+  background: #0b1018;
+  display: flex; align-items: center; justify-content: center;
+  color: #55607a; font-size: 13px; text-align: center; padding: 0 40px; line-height: 1.7;
+}
+
+/* ---------------- Thẻ dự án ---------------- */
+.the-du-an { border-left: 3px solid var(--ngoc); }
+.chon-du-an { min-width: 280px; }

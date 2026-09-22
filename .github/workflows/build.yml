@@ -37,8 +37,25 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Dựng .exe và đẩy lên Releases
-        run: npx electron-builder --win --publish always
+      # LUÔN ghi rõ --publish. Bỏ trống thì electron-builder tự nhận ra đang
+      # chạy trong CI và ngầm bật chế độ publish ("Implicit publishing triggered
+      # by CI detection"), rồi chết vì không thấy GH_TOKEN — build đúng mà vẫn
+      # đỏ, log lại toàn stack trace của PublishManager nên rất dễ đổ oan cho
+      # khâu đóng gói.
+      - name: Dựng và đẩy .exe lên Releases — tự thử lại nếu mạng chập chờn
+        shell: bash
+        run: |
+          for lan in 1 2 3; do
+            echo "--- Lần thử $lan ---"
+            if npx electron-builder --win --publish always; then
+              echo "Xong ở lần thử $lan."
+              exit 0
+            fi
+            echo "Lần $lan thất bại. Chờ 20 giây rồi thử lại..."
+            sleep 20
+          done
+          echo "Thất bại cả 3 lần. Đọc log của lần cuối ở trên để biết lý do thật."
+          exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v4
@@ -56,8 +73,20 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Dựng .dmg + .zip (Intel và Apple Silicon)
-        run: npx electron-builder --mac --publish always
+      - name: Dựng và đẩy .dmg + .zip lên Releases — tự thử lại nếu mạng chập chờn
+        shell: bash
+        run: |
+          for lan in 1 2 3; do
+            echo "--- Lần thử $lan ---"
+            if npx electron-builder --mac --publish always; then
+              echo "Xong ở lần thử $lan."
+              exit 0
+            fi
+            echo "Lần $lan thất bại. Chờ 20 giây rồi thử lại..."
+            sleep 20
+          done
+          echo "Thất bại cả 3 lần. Đọc log của lần cuối ở trên để biết lý do thật."
+          exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Không có chứng chỉ Apple thì phải tắt hẳn khâu tự dò chữ ký, nếu

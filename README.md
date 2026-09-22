@@ -11,6 +11,80 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.2.0 — đủ cả sáu màn, chạy hết chuỗi sản xuất
+
+Bản 0.1.x mới chỉ có màn Ý tưởng. Bản này làm nốt năm màn còn lại.
+
+**Kênh theo dõi.** Quét một kênh tốn đúng **3 đơn vị quota**
+(`channels.list` + `playlistItems.list` + `videos.list`), nên theo 100 kênh mỗi
+ngày chỉ mất 300 đơn vị — rẻ hơn một lượt tìm ở màn Ý tưởng tới hơn hai lần.
+Mỗi lần quét ghi một mốc vào `lich-su/<kenhId>.jsonl`; có hai mốc cách nhau từ
+12 giờ là tính được **tăng trưởng thật**, tín hiệu đáng tin hơn view/giờ vì
+không phụ thuộc tuổi video. Trung vị của kênh tính **bỏ chính video đang xét ra
+ngoài** — kênh mới ít video mà có một video nổ mạnh thì chính nó kéo trung vị
+lên và tự che mất mình.
+
+**Trình duyệt trong app.** Mỗi tài khoản là một
+`session.fromPartition('persist:yt-<id>')`, cookie tách biệt hoàn toàn. Người
+dùng **tự đăng nhập trong cửa sổ** — app không nhận, không lưu, không thấy mật
+khẩu. Chỉ mở được YouTube, Google và Claude.
+
+**Lời thoại.** yt-dlp tải theo yêu cầu (không đóng gói kèm, vì YouTube đổi giao
+diện là bản cũ chết — có nút cập nhật riêng). Ưu tiên `json3` hơn `vtt`:
+phụ đề tự động chạy **kiểu cuộn**, mỗi khung hình lặp lại nguyên văn dòng trước
+rồi nối thêm vài chữ, parse thô là ra văn bản lặp 2–3 lần và cái lặp đó đi
+thẳng vào kịch bản. Chỗ chồng lấn đếm **theo từ, không theo ký tự** — đếm ký tự
+với ngưỡng 12 thì cụm "the room" (8 ký tự) lọt lưới.
+
+**Kịch bản.** 11.000 từ **không xin một phát**: xin dàn ý 8 phần trước, rồi
+từng phần một, mỗi phần kèm **sổ chống lặp** rút từ các phần đã viết (các cụm
+4 từ đã dùng, các cách vào câu, các từ lặp nhiều) cộng 200 từ cuối của phần
+trước để giọng không đứt mạch.
+
+**Kiểm duyệt.** Chạy cục bộ, không gọi AI: cụm 4/8 từ lặp, câu gần trùng, bản
+đồ nhiệt 40 khối để thấy **vòng lặp nằm ở đâu**, và **% trùng cụm 5 từ với lời
+thoại gốc** — phép đo quan trọng nhất với kiểu kênh viết lại nội dung. Kèm bộ
+luật chính sách sửa được (`src/bo-luat-chinh-sach.json`).
+
+**Prompt ảnh.** 11.000 ÷ 27 ≈ **408 cảnh**, nên có tuỳ chọn gộp 2 cảnh một ảnh
+(còn ~204 ảnh). Kho nhân vật chèn **nguyên văn** đoạn mô tả cố định vào mọi cảnh
+có nhân vật đó — thứ duy nhất thật sự giữ được mặt giống nhau qua hàng trăm
+cảnh. Xuất `prompts.txt`, `prompts.xlsx`, `scenes.json`, `ten-anh.txt`.
+
+Hai lỗi bắt được khi soi ảnh chụp giao diện và một lỗi bắt được nhờ kiểm thử:
+
+- `/age/i` trong phần dịch lỗi yt-dlp khớp luôn vào chữ "web**page**", nên mọi
+  lỗi tải trang đều bị báo nhầm thành "video giới hạn độ tuổi" — người dùng đi
+  tìm cookie trong khi thật ra chỉ cần cập nhật yt-dlp.
+- Ô chọn "Gộp cảnh" bị ép rộng 92px nên "1 cảnh = 1 ảnh" hiện ra thành "1 cảnh :".
+- Khung trình duyệt lúc chưa có tab là một ô đen trống trơn, trông như đã hỏng.
+
+### 0.1.1 — sửa khâu đóng gói, chưa đổi gì trong tool
+
+Bản 0.1.0 dựng được `.exe` nhưng không phát hành lên Releases được. Hai nguyên
+nhân, cả hai đều nằm ở cấu hình chứ không phải ở mã của tool:
+
+- **Hai bản build ghi đè lên nhau.** `artifactName` khai chung một dòng cho mọi
+  target, mà `nsis` (bản cài) và `portable` (bản chạy thẳng) đều ra đuôi `.exe`
+  → cùng tên `Tool Y Tuong-0.1.0-x64.exe`. Bản portable đè bản Setup ngay trên
+  đĩa, rồi lúc tải lên GitHub phải xoá file cũ tải lại, và chết giữa chừng ở đó
+  (`already exists on GitHub` → `Request timed out`). Nay mỗi target có tên
+  riêng: `...-Setup.exe` và `...-Portable.exe`.
+- **Thiếu `--publish` ghi rõ.** Bỏ trống thì electron-builder tự phát hiện đang
+  chạy trong CI rồi ngầm bật chế độ publish (*"Implicit publishing triggered by
+  CI detection"*) và chết vì không thấy `GH_TOKEN` — build đúng mà vẫn đỏ, log
+  thì toàn stack trace của `PublishManager` nên rất dễ đổ oan cho khâu đóng gói.
+
+Workflow cũng được bọc vòng lặp thử lại 3 lần cho khâu tải lên, phòng khi mạng
+của máy chủ GitHub chập chờn thật.
+
+**Bản nháp trên Releases.** electron-builder mặc định tạo Release ở dạng
+**nháp** (`releaseType` mặc định là `draft`). Bản nháp chỉ chủ repo mới thấy và
+**không hiện ở mục Releases ngoài trang chủ**, nên xong build mà nhìn vào thấy
+trống trơn như chưa có gì — trong khi file `.exe` đã nằm sẵn trong đó. Từ bản
+này trở đi cấu hình đặt `"releaseType": "release"` để phát hành thẳng, khỏi phải
+vào bấm Publish tay.
+
 ### 0.1.0 — bản đầu tiên
 
 - **Màn Ý tưởng chạy được trọn vẹn**: ghép từ khóa rời rạc thành 5 cụm đáng

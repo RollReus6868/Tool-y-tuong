@@ -17,6 +17,16 @@ const ytApi = require('../src/youtube-api')
 const { timYTuong } = require('../src/tim-y-tuong')
 const { xuatExcel } = require('../src/xuat-excel')
 const { taoKho } = require('../src/store')
+const phuDe = require('../src/phu-de')
+const lichSu = require('../src/lich-su')
+const kenhTheoDoi = require('../src/kenh-theo-doi')
+const ytDlp = require('../src/yt-dlp')
+const kichBanMod = require('../src/kich-ban')
+const kiemDuyet = require('../src/kiem-duyet')
+const promptAnh = require('../src/prompt-anh')
+const duAnMod = require('../src/du-an')
+const trinhDuyet = require('../src/trinh-duyet')
+const boLuatChinhSach = require('../src/bo-luat-chinh-sach.json')
 
 let soQua = 0
 const soTruot = []
@@ -527,6 +537,481 @@ async function chay() {
     assert.strictEqual(wb.worksheets[0].name, 'Video nổ view')
     assert.strictEqual(wb.worksheets[0].getRow(1).getCell(1).value, 'Nhãn')
     assert.strictEqual(wb.worksheets[1].name, 'Điều kiện tìm')
+  })
+
+  // =========================================================================
+  nhom('13. Phụ đề — bẫy lặp kiểu cuộn')
+
+  await kiem('json3: bỏ sự kiện aAppend (chỉ vẽ lại chữ cũ cho hiệu ứng cuộn)', () => {
+    const tho = JSON.stringify({ events: [
+      { tStartMs: 0, dDurationMs: 2000, segs: [{ utf8: 'hello ' }, { utf8: 'world' }] },
+      { tStartMs: 2000, dDurationMs: 900, aAppend: 1, segs: [{ utf8: 'hello world' }] },
+      { tStartMs: 2000, dDurationMs: 2000, segs: [{ utf8: 'this is new' }] }
+    ] })
+    const kq = phuDe.chuyenThanhVanBan(tho, { dinhDang: 'json3' })
+    assert.strictEqual(kq.vanBan, 'hello world this is new')
+    assert.strictEqual(kq.soCue, 2, 'sự kiện aAppend phải bị loại ngay từ bước phân tích')
+  })
+
+  await kiem('vtt: phụ đề tự động kiểu cuộn không được ra văn bản lặp', () => {
+    const vtt = [
+      'WEBVTT', '',
+      '00:00:01.000 --> 00:00:03.000', '<c>he walked into</c>', '',
+      '00:00:03.000 --> 00:00:05.000', 'he walked into the room', '',
+      '00:00:05.000 --> 00:00:07.000', 'the room and sat down', ''
+    ].join('\n')
+    const kq = phuDe.chuyenThanhVanBan(vtt, { dinhDang: 'vtt' })
+    assert.strictEqual(kq.vanBan, 'he walked into the room and sat down')
+  })
+
+  await kiem('chồng lấn đếm theo TỪ, không theo ký tự', () => {
+    // Đếm ký tự với ngưỡng 12 thì "the room" (8 ký tự) lọt lưới và câu ra thành
+    // "...into the room the room and sat". Đây chính là lỗi đã gặp.
+    assert.strictEqual(phuDe.soTuChongLan(['into', 'the', 'room'], ['the', 'room', 'and']), 2)
+    assert.strictEqual(phuDe.soTuChongLan(['a', 'b'], ['c', 'd']), 0)
+  })
+
+  await kiem('KHÔNG cắt nhầm khi chỉ trùng đúng một từ thông dụng', () => {
+    const kq = phuDe.boLapCuon([{ chu: 'she opened the' }, { chu: 'the door slowly' }])
+    assert.deepStrictEqual(kq.map((c) => c.chu), ['she opened the', 'the door slowly'])
+  })
+
+  await kiem('bỏ nhãn âm thanh [Music] và ngắt đoạn theo khoảng lặng', () => {
+    const cue = [
+      { batDauMs: 0, keoDaiMs: 1000, chu: 'first thought here' },
+      { batDauMs: 1000, keoDaiMs: 500, chu: '[Music]' },
+      { batDauMs: 5000, keoDaiMs: 1000, chu: 'much later a second thought' }
+    ]
+    const doan = phuDe.ghepDoan(cue, { khoangLangGiay: 0.8 })
+    assert.strictEqual(doan.length, 2, 'khoảng lặng 3,5 giây phải tách đoạn')
+    assert.ok(!doan.join(' ').includes('Music'))
+  })
+
+  // =========================================================================
+  nhom('14. Lịch sử view (JSONL)')
+
+  await kiem('ghi rồi đọc lại đúng, và dòng hỏng KHÔNG làm mất cả tệp', () => {
+    const d = thuMucTam('lichsu')
+    lichSu.ghiMoc(d, 'UC123', [{ videoId: 'v1', views: 100 }], 1000)
+    fs.appendFileSync(lichSu.duongDanKenh(d, 'UC123'), '{ hỏng giữa chừng\n')
+    lichSu.ghiMoc(d, 'UC123', [{ videoId: 'v1', views: 500 }], 2000)
+
+    const ds = lichSu.docLichSu(d, 'UC123')
+    assert.strictEqual(ds.length, 2, 'phải bỏ đúng dòng hỏng, giữ hai dòng lành')
+    assert.strictEqual(ds[1].views, 500)
+  })
+
+  await kiem('tăng trưởng chỉ tính khi hai mốc cách nhau đủ xa', () => {
+    const gan = [
+      { luc: 0, views: 100, ngayDang: '' },
+      { luc: 600000, views: 110, ngayDang: '' }   // cách 10 phút
+    ]
+    assert.strictEqual(lichSu.tinhTangTruong(gan), null,
+      'hai lần quét cách 10 phút mà tính tăng trưởng thì video nào cũng trông như đã nguội')
+
+    const xa = [
+      { luc: 0, views: 100, ngayDang: '' },
+      { luc: 24 * 3600000, views: 2500, ngayDang: '' }
+    ]
+    const t = lichSu.tinhTangTruong(xa)
+    assert.strictEqual(t.tang, 2400)
+    assert.strictEqual(t.soGio, 24)
+    assert.strictEqual(t.tangMoiGio, 100)
+  })
+
+  // =========================================================================
+  nhom('15. Kênh theo dõi')
+
+  await kiem('trung vị BỎ chính video đang xét ra ngoài', () => {
+    // Kênh mới ít video: một video nổ cực mạnh sẽ tự kéo trung vị lên và che mất mình.
+    const views = [100, 100, 100, 5000]
+    assert.strictEqual(kenhTheoDoi.trungViBoChinhNo(views, 3), 100)
+  })
+
+  await kiem('vượt trung vị từ 3 lần là NỔ VIEW', () => {
+    const kq = kenhTheoDoi.danhDauVuotTrungVi(
+      [{ views: 900 }, { views: 200 }, { views: 100 }], 100)
+    assert.strictEqual(kq[0].nhan, 'NỔ VIEW')
+    assert.strictEqual(kq[0].vuotTrungVi, 9)
+    assert.strictEqual(kq[1].nhan, 'TỐT')
+    assert.strictEqual(kq[2].nhan, 'BÌNH THƯỜNG')
+  })
+
+  await kiem('gộp nhiều kênh rồi sắp theo mức vượt trung vị', () => {
+    const gop = kenhTheoDoi.gopNoView([
+      { kenh: { tenKenh: 'A', kenhId: 'a' }, video: [{ vuotTrungVi: 2, nhan: 'TỐT' }] },
+      { kenh: { tenKenh: 'B', kenhId: 'b' }, video: [{ vuotTrungVi: 7, nhan: 'NỔ VIEW' }] }
+    ], { chiNoView: false })
+    assert.strictEqual(gop[0].tenKenh, 'B')
+    assert.strictEqual(gop.length, 2)
+  })
+
+  await kiem('đọc được kênh từ link, @handle và kenhId — KHÔNG dùng search.list', () => {
+    assert.deepStrictEqual(ytApi.tachDinhDanhKenh('UCabcdefghijklmnopqrstuv'),
+      { loai: 'id', giaTri: 'UCabcdefghijklmnopqrstuv' })
+    assert.deepStrictEqual(ytApi.tachDinhDanhKenh('@MrBeast'), { loai: 'handle', giaTri: '@MrBeast' })
+    assert.deepStrictEqual(ytApi.tachDinhDanhKenh('https://www.youtube.com/@SomeChannel'),
+      { loai: 'handle', giaTri: '@SomeChannel' })
+    assert.deepStrictEqual(ytApi.tachDinhDanhKenh('https://youtube.com/channel/UCabcdefghijklmnopqrstuv'),
+      { loai: 'id', giaTri: 'UCabcdefghijklmnopqrstuv' })
+    assert.strictEqual(ytApi.tachDinhDanhKenh(''), null)
+  })
+
+  // =========================================================================
+  nhom('16. yt-dlp')
+
+  await kiem('tách videoId từ mọi kiểu link', () => {
+    const mong = 'dQw4w9WgXcQ'
+    for (const l of [
+      mong,
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      'https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s',
+      'https://youtu.be/dQw4w9WgXcQ',
+      'https://www.youtube.com/shorts/dQw4w9WgXcQ'
+    ]) assert.strictEqual(ytDlp.tachVideoId(l), mong, 'hỏng ở: ' + l)
+    assert.strictEqual(ytDlp.tachVideoId('không phải link'), null)
+  })
+
+  await kiem('tách nhiều link một lúc, bỏ trùng', () => {
+    const ds = ytDlp.tachNhieuVideoId('https://youtu.be/aaaaaaaaaaa\nhttps://youtu.be/bbbbbbbbbbb https://youtu.be/aaaaaaaaaaa')
+    assert.deepStrictEqual(ds, ['aaaaaaaaaaa', 'bbbbbbbbbbb'])
+  })
+
+  await kiem('cookie xuất đúng định dạng Netscape mà yt-dlp đọc được', () => {
+    const chu = ytDlp.dinhDangCookieNetscape([
+      { domain: '.youtube.com', path: '/', secure: true, expirationDate: 1800000000, name: 'SID', value: 'abc' }
+    ])
+    assert.ok(chu.startsWith('# Netscape HTTP Cookie File'))
+    const dong = chu.split('\n').find((d) => d.includes('SID'))
+    assert.deepStrictEqual(dong.split('\t'), ['.youtube.com', 'TRUE', '/', 'TRUE', '1800000000', 'SID', 'abc'])
+  })
+
+  await kiem('dịch lỗi yt-dlp thành câu người dùng biết phải làm gì', () => {
+    assert.ok(ytDlp.dichLoiYtDlp('ERROR: Sign in to confirm you are not a bot').includes('đăng nhập'))
+    assert.ok(ytDlp.dichLoiYtDlp('ERROR: Video unavailable').includes('không xem được'))
+    assert.ok(ytDlp.dichLoiYtDlp('ERROR: Unable to download webpage: HTTP Error 403').includes('Cập nhật yt-dlp'))
+  })
+
+  await kiem('tên binary đúng theo hệ điều hành', () => {
+    assert.strictEqual(ytDlp.tenBinary('win32'), 'yt-dlp.exe')
+    assert.strictEqual(ytDlp.tenBinary('darwin'), 'yt-dlp_macos')
+    assert.strictEqual(ytDlp.tenBinary('linux'), 'yt-dlp')
+  })
+
+  // =========================================================================
+  nhom('17. Kịch bản 10.000-12.000 từ')
+
+  await kiem('chia phần cộng lại ĐÚNG BẰNG mục tiêu, không hụt vì làm tròn', () => {
+    for (const [tong, soPhan] of [[11000, 8], [10000, 7], [12345, 9]]) {
+      const p = kichBanMod.chiaPhan(tong, soPhan)
+      assert.strictEqual(p.length, soPhan)
+      assert.strictEqual(p.reduce((a, x) => a + x.soTuMucTieu, 0), tong, `${tong}/${soPhan} bị hụt`)
+    }
+  })
+
+  await kiem('đọc được dàn ý Claude trả về', () => {
+    const p = kichBanMod.phanTichDanY([
+      'PHẦN 1 | Lời mở và câu hỏi treo | 1375',
+      '- Đặt bối cảnh', '- Nêu nghịch lý',
+      'PHẦN 2 | Bối cảnh lịch sử | 1375', '- Mốc thời gian'
+    ].join('\n'))
+    assert.strictEqual(p.length, 2)
+    assert.strictEqual(p[0].tieuDe, 'Lời mở và câu hỏi treo')
+    assert.strictEqual(p[0].soTuMucTieu, 1375)
+    assert.deepStrictEqual(p[0].y, ['Đặt bối cảnh', 'Nêu nghịch lý'])
+  })
+
+  await kiem('sổ chống lặp rút được cụm đã lặp, cách vào câu và từ dùng nhiều', () => {
+    const daViet = ['The old harbour stood quiet. The old harbour stood empty. And so they waited. And so they left.']
+    const so = kichBanMod.soChongLap(daViet)
+    assert.ok(so.cumDaLap.some((c) => c.includes('old harbour stood')), 'phải bắt được cụm lặp nguyên văn')
+    assert.ok(so.moDau.includes('and so'), 'phải bắt được cách vào câu bị lặp')
+    assert.ok(so.tuRieng.some((t) => t.startsWith('harbour')))
+  })
+
+  await kiem('phần 1 KHÔNG có sổ chống lặp; phần 2 trở đi BẮT BUỘC có', () => {
+    const p1 = kichBanMod.taoPromptPhan({ phanSo: 1, cacPhanDaViet: [] })
+    assert.ok(!p1.includes('SỔ CHỐNG LẶP'))
+
+    const p2 = kichBanMod.taoPromptPhan({ phanSo: 2, cacPhanDaViet: ['The old harbour stood quiet. The old harbour stood empty.'] })
+    assert.ok(p2.includes('SỔ CHỐNG LẶP'), 'thiếu sổ chống lặp thì tới phần 5-6 là kịch bản bắt đầu tự lặp')
+    assert.ok(p2.includes('TỪ CUỐI CỦA PHẦN 1'), 'thiếu đoạn nối thì giọng và mạch bị đứt giữa hai phần')
+  })
+
+  await kiem('thống kê kịch bản: số cảnh và số ảnh khi gộp 2', () => {
+    const chu = Array.from({ length: 300 }, (_, i) => `word${i}`).join(' ')
+    const tk = kichBanMod.phanTichKichBan(chu, { tuMoiCanh: 30, soTuMucTieu: 600 })
+    assert.strictEqual(tk.soTu, 300)
+    assert.strictEqual(tk.soCanh, 10)
+    assert.strictEqual(tk.soAnhNeuGop2, 5)
+    assert.strictEqual(tk.datMucTieu, 50)
+    assert.strictEqual(tk.thieuTu, 300)
+  })
+
+  // =========================================================================
+  nhom('18. Kiểm duyệt')
+
+  await kiem('bắt cụm lặp nguyên văn, BỎ QUA cụm toàn từ chức năng', () => {
+    const chu = 'the storm broke the seawall. later that night the storm broke the seawall again.'
+    const cum = kiemDuyet.cumLap(chu, { n: 4, toiThieuLan: 2 })
+    assert.ok(cum.some((c) => c.cum.includes('storm broke the seawall')))
+    assert.ok(!cum.some((c) => kiemDuyet.toanTuChucNang(c.cum)),
+      'cụm toàn từ chức năng lặp là chuyện bình thường của mọi văn bản, gắn cờ chỉ gây nhiễu')
+  })
+
+  await kiem('bắt câu gần trùng (cùng vốn từ, đảo cách sắp)', () => {
+    const chu = 'Nobody dared to speak a single word that evening. ' +
+                'Nobody dared to speak a single word that evening in the hall.'
+    const cum = kiemDuyet.cauGanTrung(chu)
+    assert.strictEqual(cum.length, 1)
+    assert.ok(cum[0].doGiong >= 70)
+  })
+
+  await kiem('bắt tật "And then... And then... And then..." (mở đầu 2 từ)', () => {
+    const chu = 'And then he raised his hand. And then he lowered it. And then the guards stepped back.'
+    const md = kiemDuyet.moDauCauLap(chu)
+    assert.deepStrictEqual(md[0], { moDau: 'and then', soLan: 3 })
+  })
+
+  await kiem('KHÔNG báo oan trên văn bản sạch', () => {
+    const sach = 'Rain fell across the valley for three days. Farmers counted their losses quietly. ' +
+                 'A bridge collapsed near the mill on Thursday. Children were sent home early.'
+    assert.strictEqual(kiemDuyet.moDauCauLap(sach).length, 0)
+    assert.strictEqual(kiemDuyet.cauGanTrung(sach).length, 0)
+    assert.strictEqual(kiemDuyet.quetChinhSach(sach, boLuatChinhSach).ketLuan, 'KHÔNG GẮN CỜ NÀO')
+  })
+
+  await kiem('độ giống bản gốc: ba mức xanh/vàng/đỏ', () => {
+    assert.strictEqual(kiemDuyet.mucDoGiong(3), 'XANH')
+    assert.strictEqual(kiemDuyet.mucDoGiong(8), 'VÀNG')
+    assert.strictEqual(kiemDuyet.mucDoGiong(25), 'ĐỎ')
+
+    const goc = 'the lighthouse keeper climbed the spiral stair every single night without fail'
+    const y = kiemDuyet.doGiongBanGoc(goc, goc)
+    assert.strictEqual(y.tyLe, 100, 'sao chép nguyên văn phải ra 100%')
+    assert.strictEqual(y.mucDo, 'ĐỎ')
+
+    const khac = 'a completely different sentence about farming equipment and tractor maintenance schedules'
+    assert.strictEqual(kiemDuyet.doGiongBanGoc(khac, goc).tyLe, 0)
+  })
+
+  await kiem('ngưỡng 8%/20% phải nói rõ là do tool đặt, không phải số YouTube công bố', () => {
+    const kq = kiemDuyet.doGiongBanGoc('a b c d e f g h', 'a b c d e f g h')
+    assert.ok(/không phải con số YouTube công bố/i.test(kq.ghiChuNguong))
+  })
+
+  await kiem('quét chính sách gắn đúng cờ và KHÔNG tự nhận là xác nhận an toàn', () => {
+    const kq = kiemDuyet.quetChinhSach(
+      'The election results were disputed. You won\'t believe the shocking truth.', boLuatChinhSach)
+    const ma = kq.co.map((c) => c.ma)
+    assert.ok(ma.includes('chinh-tri'))
+    assert.ok(ma.includes('gay-soc'))
+    assert.strictEqual(kq.ketLuan, 'CÓ CỜ VÀNG')
+    assert.ok(/không phải xác nhận an toàn/i.test(kq.canhBao))
+  })
+
+  await kiem('bộ luật có đủ mục đỏ lẫn vàng và mỗi luật có hướng sửa', () => {
+    assert.ok(boLuatChinhSach.luat.length >= 10)
+    assert.ok(boLuatChinhSach.luat.some((l) => l.mucDo === 'đỏ'))
+    assert.ok(boLuatChinhSach.luat.some((l) => l.mucDo === 'vàng'))
+    for (const l of boLuatChinhSach.luat) {
+      assert.ok(l.ma && l.ten && l.giaiThich && l.huongSua, 'luật thiếu trường: ' + l.ma)
+      assert.ok(Array.isArray(l.tuKhoa) && l.tuKhoa.length, 'luật không có từ khóa: ' + l.ma)
+    }
+  })
+
+  await kiem('báo cáo cho ra hướng sửa CỤ THỂ, không phải câu chung chung', () => {
+    const chu = 'And then he waited. And then she waited. And then they waited. The harbour stood empty that year.'
+    const bc = kiemDuyet.baoCao(chu, { boLuat: boLuatChinhSach })
+    assert.ok(bc.huongSua.length > 0)
+    assert.ok(bc.huongSua.some((h) => /and then/.test(h.viec)), 'hướng sửa phải chỉ đúng chỗ phải sửa')
+  })
+
+  // =========================================================================
+  nhom('19. Prompt ảnh — bài toán 400 cảnh')
+
+  await kiem('cắt cảnh bám mức 25-30 từ và không cắt giữa câu', () => {
+    const chu = Array.from({ length: 30 },
+      (_, i) => `The old keeper climbed the stone stair as dusk fell over the harbour number ${i}.`).join(' ')
+    const canh = promptAnh.catCanh(chu, { tuMoiCanh: 27, toiDaTu: 40 })
+    for (const c of canh) {
+      assert.ok(c.soTu <= 40, `cảnh ${c.so} dài ${c.soTu} từ, vượt trần`)
+      assert.ok(/[.!?]$/.test(c.chu.trim()), `cảnh ${c.so} bị cắt giữa câu: "${c.chu}"`)
+    }
+  })
+
+  await kiem('BẤT BIẾN: số thứ tự liên tục từ 1, không bỏ số', () => {
+    // Flow Automation Studio tra prompts[index-1] theo số thứ tự TOÀN CỤC.
+    // Thiếu một số là lệch tên tệp cả mẻ, và nó sai IM LẶNG.
+    const chu = Array.from({ length: 50 }, (_, i) => `Sentence number ${i} here.`).join(' ')
+    const canh = promptAnh.catCanh(chu, { tuMoiCanh: 10 })
+    canh.forEach((c, i) => {
+      assert.strictEqual(c.so, i + 1)
+      assert.strictEqual(c.ten, String(i + 1).padStart(3, '0'))
+    })
+    const pr = promptAnh.taoTatCaPrompt(canh, {})
+    assert.strictEqual(promptAnh.kiemTraLienTuc(pr).ok, true)
+  })
+
+  await kiem('gộp 2 cảnh một ảnh cho ra đúng nửa số ảnh', () => {
+    const chu = Array.from({ length: 40 }, (_, i) => `Sentence number ${i} here.`).join(' ')
+    const mot = promptAnh.catCanh(chu, { tuMoiCanh: 10, gopCanh: 1 })
+    const hai = promptAnh.catCanh(chu, { tuMoiCanh: 10, gopCanh: 2 })
+    assert.strictEqual(hai.length, Math.ceil(mot.length / 2))
+    assert.strictEqual(hai[0].so, 1, 'gộp xong vẫn phải đánh số lại liên tục từ 1')
+  })
+
+  await kiem('mô tả nhân vật chèn NGUYÊN VĂN — đó là cách duy nhất giữ mặt giống nhau', () => {
+    const moTa = 'a weathered man in his seventies, grey beard, heavy wool coat'
+    const kho = [{ ten: 'the old keeper', moTa, tuKhoa: ['keeper'] }]
+    const canh = promptAnh.catCanh('The old keeper climbed the stair slowly.', { tuMoiCanh: 27 })
+    const pr = promptAnh.taoTatCaPrompt(canh, { khoNhanVat: kho })
+    assert.ok(pr[0].prompt.includes(moTa), 'đoạn mô tả phải vào prompt nguyên văn, không diễn giải lại')
+    assert.deepStrictEqual(pr[0].nhanVat, ['the old keeper'])
+  })
+
+  await kiem('cảnh không có nhân vật thì prompt không dính dấu phẩy thừa', () => {
+    const canh = promptAnh.catCanh('Rain fell on the empty street.', { tuMoiCanh: 27 })
+    const pr = promptAnh.taoTatCaPrompt(canh, { khoNhanVat: [] })
+    assert.ok(!/,\s*,/.test(pr[0].prompt), 'dấu phẩy liên tiếp làm mô hình sinh ảnh hiểu sai trọng số')
+    assert.ok(!pr[0].prompt.startsWith(','))
+  })
+
+  await kiem('đọc JSON Claude trả về kể cả khi có lời dẫn và khối mã', () => {
+    const chu = 'Đây là kết quả:\n```json\n[{"so":1,"subject":"an old keeper","action":"climbing",' +
+      '"setting":"harbour","lighting":"low light","mood":"lonely","camera":"wide"}]\n```'
+    const kq = promptAnh.phanTichMoTaCanh(chu)
+    assert.strictEqual(kq.loi, null)
+    assert.strictEqual(kq.soDoc, 1)
+    assert.strictEqual(kq.moTa[1].subject, 'an old keeper')
+  })
+
+  await kiem('JSON hỏng thì báo lỗi rõ ràng chứ không im lặng trả rỗng', () => {
+    assert.ok(promptAnh.phanTichMoTaCanh('[{"so":1,').loi)
+    assert.ok(promptAnh.phanTichMoTaCanh('không có json gì ở đây').loi)
+  })
+
+  await kiem('prompts.txt: ĐÚNG một dòng mỗi prompt, kể cả khi prompt chứa xuống dòng', () => {
+    const pr = [
+      { prompt: 'dòng một\nvẫn cùng prompt', ten: '001' },
+      { prompt: 'prompt hai', ten: '002' }
+    ]
+    const dong = promptAnh.xuatPromptsTxt(pr).trimEnd().split('\n')
+    assert.strictEqual(dong.length, 2, 'lệch số dòng là Flow gán nhầm prompt cho cả mẻ')
+    assert.strictEqual(dong[0], 'dòng một vẫn cùng prompt')
+  })
+
+  await kiem('tên ảnh đánh số 3 chữ số cho CapCut xếp đúng thứ tự', () => {
+    const pr = Array.from({ length: 12 }, (_, i) => ({ ten: String(i + 1).padStart(3, '0') }))
+    const ten = promptAnh.xuatTenAnh(pr).trimEnd().split('\n')
+    assert.strictEqual(ten[0], '001.png')
+    assert.strictEqual(ten[11], '012.png')
+  })
+
+  await kiem('kịch bản 11.000 từ thật ra khoảng 400 cảnh — con số phải nhìn thẳng', () => {
+    // Dựng đúng cỡ thật: 11.000 từ, là mục tiêu mỗi video của kênh này.
+    const cau = 'This is sentence number N of the long narrated script here.'  // 11 từ
+    const soCau = Math.ceil(11000 / 11)
+    const chu = Array.from({ length: soCau }, (_, i) => cau.replace('N', i)).join(' ')
+    const soTuThat = (chu.match(/\S+/g) || []).length
+    assert.ok(soTuThat >= 10500 && soTuThat <= 12500, 'văn bản thử phải đúng cỡ 10-12k từ: ' + soTuThat)
+
+    const canh = promptAnh.catCanh(chu, { tuMoiCanh: 27 })
+    const tk = promptAnh.thongKeCanh(canh)
+    assert.ok(tk.soCanh >= 300 && tk.soCanh <= 500,
+      `11.000 từ phải ra 300-500 cảnh, đang ra ${tk.soCanh} — lệch xa thế này là cắt cảnh sai`)
+    assert.ok(tk.tuTrungBinh >= 18 && tk.tuTrungBinh <= 40, 'từ/cảnh lệch xa mức đặt: ' + tk.tuTrungBinh)
+
+    // Gộp 2 cảnh một ảnh là lối thoát cho khối lượng render — phải đúng nửa.
+    const gop = promptAnh.catCanh(chu, { tuMoiCanh: 27, gopCanh: 2 })
+    assert.strictEqual(gop.length, Math.ceil(canh.length / 2))
+  })
+
+  // =========================================================================
+  nhom('20. Kho dự án')
+
+  await kiem('tên dự án tiếng Việt có dấu thành tên thư mục an toàn', () => {
+    assert.strictEqual(duAnMod.anToanTen('Chuyện Kinh Thánh — tập 1'), 'chuyen-kinh-thanh-tap-1')
+    assert.strictEqual(duAnMod.anToanTen(''), 'du-an')
+  })
+
+  await kiem('kịch bản lưu THEO PHIÊN BẢN, không bao giờ ghi đè', () => {
+    const kho = duAnMod.taoKhoDuAn(thuMucTam('duan'))
+    const d = kho.tao('Dự án thử')
+    kho.ghiKichBan(d.ma, 'bản một')
+    kho.ghiKichBan(d.ma, 'bản hai')
+    const cac = kho.cacBanKichBan(d.ma)
+    assert.deepStrictEqual(cac, ['kich-ban-v1.md', 'kich-ban-v2.md'],
+      'ghi đè một lần là mất công cả buổi và không lấy lại được')
+    assert.strictEqual(kho.docKichBan(d.ma), 'bản hai', 'mặc định đọc bản mới nhất')
+    assert.strictEqual(kho.docKichBan(d.ma, 'kich-ban-v1.md'), 'bản một')
+  })
+
+  await kiem('lời thoại và các phần viết dở được giữ lại qua nhiều phiên làm việc', () => {
+    const kho = duAnMod.taoKhoDuAn(thuMucTam('duan2'))
+    const d = kho.tao('Dự án hai')
+    kho.ghiLoiThoai(d.ma, 'một hai ba bốn năm')
+    kho.ghiCacPhan(d.ma, ['phần một', null, 'phần ba'])
+    assert.strictEqual(kho.docLoiThoai(d.ma), 'một hai ba bốn năm')
+    assert.strictEqual(kho.doc(d.ma).soTuLoiThoai, 5)
+    assert.deepStrictEqual(kho.docCacPhan(d.ma), ['phần một', null, 'phần ba'])
+  })
+
+  await kiem('tên trùng thì tự thêm hậu tố, không đè lên dự án cũ', () => {
+    const kho = duAnMod.taoKhoDuAn(thuMucTam('duan3'))
+    const a = kho.tao('Cùng tên')
+    const b = kho.tao('Cùng tên')
+    assert.notStrictEqual(a.ma, b.ma)
+  })
+
+  // =========================================================================
+  nhom('21. Trình duyệt đa tài khoản')
+
+  await kiem('mỗi tài khoản một phân vùng riêng — cookie không được lẫn', () => {
+    assert.strictEqual(trinhDuyet.tenPhanVung('tk1'), 'persist:yt-tk1')
+    assert.notStrictEqual(trinhDuyet.tenPhanVung('tk1'), trinhDuyet.tenPhanVung('tk2'))
+    // Ký tự lạ phải bị lọc, không được ghép thẳng vào tên phân vùng.
+    assert.strictEqual(trinhDuyet.tenPhanVung('../../hack'), 'persist:yt-hack')
+  })
+
+  await kiem('chỉ mở được các trang liên quan tới công việc', () => {
+    assert.strictEqual(trinhDuyet.duocPhepMo('https://www.youtube.com/watch?v=x'), true)
+    assert.strictEqual(trinhDuyet.duocPhepMo('https://claude.ai'), true)
+    assert.strictEqual(trinhDuyet.duocPhepMo('https://accounts.google.com/signin'), true)
+    assert.strictEqual(trinhDuyet.duocPhepMo('https://trang-la.example.com'), false)
+    assert.strictEqual(trinhDuyet.duocPhepMo('file:///etc/passwd'), false)
+    assert.strictEqual(trinhDuyet.duocPhepMo('không phải url'), false)
+  })
+
+  await kiem('id tài khoản sinh ra không trùng nhau', () => {
+    const a = trinhDuyet.taoIdTaiKhoan(1000, 0.1)
+    const b = trinhDuyet.taoIdTaiKhoan(1001, 0.9)
+    assert.notStrictEqual(a, b)
+    assert.ok(/^tk[a-z0-9]+$/.test(a))
+  })
+
+  // =========================================================================
+  nhom('22. Hợp đồng cài đặt')
+
+  await kiem('mọi khoá phức tạp đều nằm trong danh sách bỏ qua của smoke', () => {
+    const { CAI_DAT_MAC_DINH, KHOA_PHUC_TAP } = require('../src/store')
+    for (const [khoa, gt] of Object.entries(CAI_DAT_MAC_DINH)) {
+      const phucTap = Array.isArray(gt) || (gt && typeof gt === 'object')
+      if (phucTap) {
+        assert.ok(KHOA_PHUC_TAP.includes(khoa),
+          `"${khoa}" là mảng/đối tượng nhưng thiếu trong KHOA_PHUC_TAP — smoke sẽ báo đỏ oan`)
+      }
+    }
+  })
+
+  await kiem('giao diện và store dùng CHUNG một danh sách khoá phức tạp', () => {
+    const { KHOA_PHUC_TAP } = require('../src/store')
+    const appJs = fs.readFileSync(path.join(__dirname, '..', 'ui', 'app.js'), 'utf8')
+    const khop = appJs.match(/const KHOA_PHUC_TAP = \[([^\]]+)\]/)
+    assert.ok(khop, 'ui/app.js phải khai báo KHOA_PHUC_TAP')
+    const trongUi = khop[1].split(',').map((s) => s.trim().replace(/['"]/g, '')).filter(Boolean)
+    assert.deepStrictEqual(trongUi.sort(), [...KHOA_PHUC_TAP].sort(),
+      'hai danh sách lệch nhau là smoke báo sai — một bên bỏ qua, một bên không')
   })
 
   // =========================================================================

@@ -1,7 +1,7 @@
 {
   "name": "tool-y-tuong",
   "productName": "Tool Ý Tưởng",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tìm ý tưởng, viết kịch bản và tạo prompt ảnh cho kênh YouTube",
   "main": "main.js",
   "author": "Ngoc Lam",
@@ -62,7 +62,11 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Tool Y Tuong"
+      "shortcutName": "Tool Y Tuong",
+      "artifactName": "${productName}-${version}-${arch}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-${arch}-Portable.${ext}"
     },
     "mac": {
       "target": [
@@ -86,11 +90,16 @@
       "identity": null,
       "hardenedRuntime": false
     },
+    "releaseInfo": {
+      "releaseName": "Tool Ý Tưởng — bản đầy đủ",
+      "releaseNotes": "MỘT MỤC PHÁT HÀNH DUY NHẤT chứa đủ cả Windows và macOS.\n\nTẢI CÁI NÀO:\n• Windows, cài như phần mềm thường → ...-x64-Setup.exe\n• Windows, chạy thẳng không cài → ...-x64-Portable.exe\n• Mac chip M1/M2/M3/M4 → ...-arm64.dmg\n• Mac Intel → ...-x64.dmg\n\nCÓ GÌ TRONG BẢN NÀY:\n• Ý tưởng — ghép 5 từ khóa bằng gợi ý thật của YouTube (miễn phí, không tốn quota), tìm video nổ view 14 ngày, chấm điểm theo view/giờ + view/sub + vượt trung vị kênh\n• Kênh theo dõi — quét 3 đơn vị quota mỗi kênh, lưu lịch sử để tính tăng trưởng thật giữa hai lần quét\n• Trình duyệt trong app — mỗi tài khoản YouTube một phiên riêng, cookie không lẫn nhau\n• Lời thoại — yt-dlp lấy phụ đề, bỏ lặp kiểu cuộn của phụ đề tự động\n• Kịch bản — dàn ý 8 phần rồi viết từng phần, mỗi phần kèm sổ chống lặp\n• Kiểm duyệt — đo lặp, đo % trùng với lời thoại gốc, quét bộ luật chính sách\n• Prompt ảnh — cắt cảnh 25-30 từ, kho nhân vật giữ nhất quán, xuất cho Flow và CapCut\n\nLẦN ĐẦU MỞ:\n• Windows báo \"Windows protected your PC\" → More info → Run anyway\n• macOS báo \"is damaged\" → mở Terminal chạy: xattr -dr com.apple.quarantine \"/Applications/Tool Y Tuong.app\"\n\nCả hai là vì file chưa mua chữ ký số, không phải file hỏng."
+    },
     "publish": [
       {
         "provider": "github",
         "owner": "RollReus6868",
-        "repo": "Tool-y-tuong"
+        "repo": "Tool-y-tuong",
+        "releaseType": "release"
       }
     ]
   }

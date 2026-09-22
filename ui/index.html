@@ -24,6 +24,7 @@
       <div class="nhom-menu">Nghiên cứu</div>
       <button class="muc" data-man="y-tuong"><span class="ico">◈</span> Ý tưởng</button>
       <button class="muc" data-man="kenh"><span class="ico">◎</span> Kênh theo dõi</button>
+      <button class="muc" data-man="trinh-duyet"><span class="ico">◐</span> Trình duyệt</button>
 
       <div class="nhom-menu">Sản xuất</div>
       <button class="muc" data-man="loi-thoai"><span class="ico">≡</span> Lời thoại</button>
@@ -95,64 +96,256 @@
       </div>
     </section>
 
-    <!-- ---------- CÁC MÀN CHƯA LÀM ---------- -->
+    <!-- ---------- KÊNH THEO DÕI ---------- -->
     <section class="man" id="man-kenh">
-      <h1>Kênh theo dõi</h1>
-      <div class="the the-sap-co">
-        <div class="nhan-sap-co">Bản 0.2.0</div>
-        <p>Theo dõi danh sách kênh, mỗi ngày quét 20 video mới nhất của từng kênh và so với
-          <b>trung vị view của chính kênh đó</b> — video vượt 3 lần thì gắn cờ NỔ VIEW.</p>
-        <p class="ghi-chu">Quét 1 kênh tốn 3 đơn vị quota, nên theo dõi 100 kênh mỗi ngày chỉ mất 300 đơn vị.
-          Trang chủ từng kênh và trang Trending sẽ đọc bằng tab trình duyệt trong app, vì API không cho biết
-          kênh đang ghim video nào.</p>
+      <h1>Kênh theo dõi — video vượt trung vị của chính kênh đó</h1>
+      <p class="dan">Quét một kênh chỉ tốn <b>3 đơn vị quota</b>, nên theo dõi 100 kênh mỗi ngày chỉ mất 300 đơn vị.
+        Tín hiệu ở đây không phải view thô mà là <b>vượt bao nhiêu lần trung vị của chính kênh đó</b> — kênh 10 triệu
+        sub video nào cũng nhiều view, không nói lên gì.</p>
+
+      <div class="the">
+        <label class="nhan" for="nhap-kenh">Thêm kênh</label>
+        <div class="hang-nut">
+          <input id="nhap-kenh" class="o-dai" placeholder="Dán link kênh, hoặc @handle, hoặc kenhId (UC...)">
+          <button id="nut-them-kenh" class="nut nut-chinh">Thêm kênh</button>
+        </div>
+        <div id="ghi-chu-kenh" class="ghi-chu"></div>
+        <div id="danh-sach-kenh"></div>
+      </div>
+
+      <div class="the">
+        <div class="hang-nut">
+          <button id="nut-quet-kenh" class="nut nut-chinh nut-to">Quét toàn bộ kênh theo dõi</button>
+          <button id="nut-thinh-hanh" class="nut nut-phu">Xem bảng Thịnh hành (1 đơn vị)</button>
+          <span id="uoc-quota-kenh" class="ghi-chu"></span>
+        </div>
+      </div>
+
+      <div class="the" id="the-ket-qua-kenh" hidden>
+        <div class="hang-dau-bang">
+          <div><span class="nhan">Kết quả quét</span> <span id="tom-tat-kenh" class="ghi-chu"></span></div>
+          <div class="loc-nhanh">
+            <button class="chip-kenh chip chip-chon" data-loc="tat-ca">Tất cả</button>
+            <button class="chip-kenh chip" data-loc="NỔ VIEW">Chỉ NỔ VIEW</button>
+          </div>
+        </div>
+        <div class="cuon-bang"><table id="bang-kenh"></table></div>
       </div>
     </section>
 
+    <!-- ---------- TRÌNH DUYỆT ---------- -->
+    <section class="man" id="man-trinh-duyet">
+      <h1>Trình duyệt — mỗi tài khoản một phiên riêng</h1>
+      <p class="dan">Mỗi tài khoản là một phiên tách biệt hoàn toàn, cookie không lẫn vào nhau.
+        <b>Anh tự đăng nhập trong cửa sổ này</b> — tool không nhận, không lưu, không thấy mật khẩu.</p>
+
+      <div class="the">
+        <label class="nhan">Tài khoản</label>
+        <div class="hang-nut">
+          <input id="nhap-ten-tai-khoan" class="o-nho" placeholder="Tên gợi nhớ">
+          <button id="nut-them-tai-khoan" class="nut nut-chinh">Thêm tài khoản</button>
+        </div>
+        <div id="danh-sach-tai-khoan"></div>
+      </div>
+
+      <div class="the" id="the-duyet">
+        <div class="hang-nut">
+          <input id="nhap-dia-chi" class="o-dai" placeholder="https://www.youtube.com" value="https://www.youtube.com">
+          <button id="nut-di" class="nut nut-phu">Đi</button>
+          <button id="nut-an-duyet" class="nut nut-phu">Ẩn trình duyệt</button>
+        </div>
+        <div id="thanh-tab"></div>
+        <div id="khung-duyet">Thêm một tài khoản rồi bấm <b>&nbsp;Mở tab&nbsp;</b> — trang web sẽ hiện ra ngay ở đây.</div>
+        <div class="ghi-chu">Chỉ mở được các trang YouTube, Google và Claude — bấm nhầm quảng cáo trong trang
+          sẽ không kéo phiên đăng nhập sang trang lạ.</div>
+      </div>
+    </section>
+
+    <!-- ---------- LỜI THOẠI ---------- -->
     <section class="man" id="man-loi-thoai">
-      <h1>Lời thoại</h1>
-      <div class="the the-sap-co">
-        <div class="nhan-sap-co">Bản 0.3.0</div>
-        <p>Lấy phụ đề bằng yt-dlp (định dạng <code>json3</code>, không dùng <code>vtt</code> vì phụ đề tự động
-          kiểu cuộn sẽ ra văn bản lặp 2–3 lần), thiếu phụ đề thì phiên âm bằng whisper.cpp model
-          <code>base.en</code> ngay trên máy.</p>
-        <p class="ghi-chu">Cho phép gộp 2–4 video vào một dự án: kịch bản 11.000 từ cần nhiều tư liệu hơn một
-          video, và trộn nhiều nguồn cũng xa "reused content" hơn là bám một video duy nhất.</p>
+      <h1>Lời thoại — bóc phụ đề video gốc</h1>
+
+      <div class="the the-du-an">
+        <label class="nhan">Dự án</label>
+        <div class="hang-nut">
+          <select id="chon-du-an" class="chon-du-an o-dai"></select>
+          <input id="nhap-ten-du-an" class="o-nho" placeholder="Tên dự án mới">
+          <button id="nut-tao-du-an" class="nut nut-chinh">Tạo dự án</button>
+          <button id="nut-mo-thu-muc-du-an" class="nut nut-phu">Mở thư mục</button>
+        </div>
+        <div id="thong-tin-du-an" class="ghi-chu"></div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Công cụ</label>
+        <div class="hang-nut">
+          <button id="nut-tai-ytdlp" class="nut nut-chinh">Tải yt-dlp</button>
+          <span id="trang-thai-ytdlp" class="ghi-chu"></span>
+        </div>
+        <p class="ghi-chu">yt-dlp không đóng gói kèm app vì YouTube đổi giao diện liên tục — bản cũ sẽ chết.
+          Khi tool tự nhiên không lấy được phụ đề nữa, bấm lại nút này là bản mới nhất.</p>
+      </div>
+
+      <div class="the">
+        <label class="nhan" for="nhap-link-video">Link video (dán nhiều link cũng được, mỗi dòng một link)</label>
+        <textarea id="nhap-link-video" rows="4" placeholder="https://www.youtube.com/watch?v=..."></textarea>
+        <div class="hang-nut">
+          <button id="nut-lay-loi-thoai" class="nut nut-chinh nut-to">Lấy lời thoại</button>
+          <select id="chon-tai-khoan-cookie" class="o-nho"></select>
+          <span class="ghi-chu">Chọn tài khoản nếu YouTube đòi đăng nhập</span>
+        </div>
+        <p class="ghi-chu">Gộp 2–4 video vào một dự án thì tốt hơn: kịch bản 11.000 từ cần nhiều tư liệu hơn một
+          video, và trộn nhiều nguồn cũng xa <b>"reused content"</b> hơn hẳn là bám một video duy nhất.</p>
+      </div>
+
+      <div class="the" id="the-ket-qua-loi-thoai" hidden>
+        <label class="nhan">Kết quả</label>
+        <div id="danh-sach-loi-thoai"></div>
       </div>
     </section>
 
+    <!-- ---------- KỊCH BẢN ---------- -->
     <section class="man" id="man-kich-ban">
-      <h1>Kịch bản</h1>
-      <div class="the the-sap-co">
-        <div class="nhan-sap-co">Bản 0.4.0</div>
-        <p>Mục tiêu 10.000–12.000 từ nên <b>không xin một phát</b>: trước tiên xin dàn ý 8 phần có hạn mức từ,
-          rồi 8 prompt riêng, mỗi prompt kèm 200 từ cuối của phần trước và <b>sổ chống lặp</b> (các cụm 4/8 từ,
-          các câu mở đầu, các ẩn dụ đã dùng) để phần sau không nói lại phần trước.</p>
-        <p class="ghi-chu">Skill viết kịch bản của anh tải lên ở Cài đặt; tool ghép vào prompt, anh dán sang
-          Claude rồi dán kết quả về từng phần.</p>
+      <h1>Kịch bản — 10.000–12.000 từ, chia phần</h1>
+      <p class="dan">Kịch bản dài <b>không bao giờ xin một phát</b>: câu trả lời bị cắt, nửa sau nhạt dần, và phần 6
+        bắt đầu nói lại ý phần 2 bằng lời khác. Quy trình: xin <b>dàn ý</b> trước, rồi từng phần một, mỗi phần kèm
+        <b>sổ chống lặp</b> rút ra từ các phần đã viết.</p>
+
+      <div class="the the-du-an">
+        <label class="nhan">Dự án</label>
+        <select class="chon-du-an o-dai"></select>
+        <div class="ghi-chu thong-tin-du-an"></div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Skill viết kịch bản</label>
+        <div class="hang-nut">
+          <select id="chon-skill" class="o-dai"></select>
+          <button id="nut-them-skill" class="nut nut-chinh">Tải SKILL.md lên</button>
+        </div>
+        <div id="danh-sach-skill"></div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Bước 1 — Dàn ý</label>
+        <div class="hang-nut">
+          <button id="nut-prompt-dan-y" class="nut nut-chinh">Chép prompt xin dàn ý</button>
+          <span id="ghi-chu-dan-y" class="ghi-chu"></span>
+        </div>
+        <label class="nhan-nho" for="o-dan-y">Dán dàn ý Claude trả về vào đây</label>
+        <textarea id="o-dan-y" rows="8" placeholder="PHẦN 1 | Tiêu đề | 1375&#10;- ý chính&#10;..."></textarea>
+        <div class="hang-nut">
+          <button id="nut-luu-dan-y" class="nut nut-xanh">Lưu dàn ý</button>
+          <span id="ket-qua-dan-y" class="ghi-chu"></span>
+        </div>
+      </div>
+
+      <div class="the">
+        <div class="hang-dau-bang">
+          <label class="nhan">Bước 2 — Viết từng phần</label>
+          <span id="tien-do-kich-ban" class="ghi-chu"></span>
+        </div>
+        <div id="danh-sach-phan"></div>
+        <div class="hang-nut">
+          <button id="nut-gop-kich-ban" class="nut nut-chinh nut-to">Gộp thành kịch bản hoàn chỉnh</button>
+          <span id="ket-qua-gop" class="ghi-chu"></span>
+        </div>
       </div>
     </section>
 
+    <!-- ---------- KIỂM DUYỆT ---------- -->
     <section class="man" id="man-kiem-duyet">
-      <h1>Kiểm duyệt</h1>
-      <div class="the the-sap-co">
-        <div class="nhan-sap-co">Bản 0.4.0</div>
-        <p>Chạy cục bộ, không cần AI: đo cụm 4/8 từ lặp, câu gần trùng (tương đồng ≥ 0,8), ma trận tương đồng
-          giữa 8 phần, bản đồ nhiệt 100 khối, và <b>% trùng 5-gram với lời thoại gốc</b> — cảnh báo vàng từ 8%,
-          đỏ từ 20%.</p>
-        <p class="ghi-chu">Quét chính sách là <b>gắn cờ rủi ro</b>, không phải xác nhận an toàn. Nội dung chính trị
-          hoặc chủng tộc luôn hiện cảnh báo vàng vì rất dễ bị giới hạn quảng cáo.</p>
+      <h1>Kiểm duyệt — chạy cục bộ, không cần AI</h1>
+      <p class="dan">Tức thì, miễn phí, và cho ra cùng kết quả mỗi lần chạy. Đo lặp nội dung, đo
+        <b>% trùng 5 từ liên tiếp với lời thoại gốc</b>, và quét bộ luật chính sách.</p>
+
+      <div class="the the-du-an">
+        <label class="nhan">Dự án</label>
+        <select class="chon-du-an o-dai"></select>
+        <div class="ghi-chu thong-tin-du-an"></div>
       </div>
+
+      <div class="the">
+        <label class="nhan" for="o-kiem-duyet">Kịch bản cần kiểm</label>
+        <div class="hang-nut">
+          <button id="nut-lay-tu-du-an" class="nut nut-phu">Lấy kịch bản từ dự án</button>
+          <button id="nut-mo-tep" class="nut nut-phu">Mở tệp có sẵn (.txt .md .srt)</button>
+          <span id="ghi-chu-nguon-kiem" class="ghi-chu"></span>
+        </div>
+        <textarea id="o-kiem-duyet" rows="10" placeholder="Dán kịch bản vào đây, hoặc lấy từ dự án, hoặc mở tệp."></textarea>
+        <div class="hang-nut">
+          <button id="nut-kiem-duyet" class="nut nut-chinh nut-to">Kiểm duyệt</button>
+          <button id="nut-xuat-bao-cao" class="nut nut-xanh">Xuất báo cáo HTML</button>
+        </div>
+      </div>
+
+      <div id="ket-qua-kiem-duyet"></div>
     </section>
 
+    <!-- ---------- PROMPT ẢNH ---------- -->
     <section class="man" id="man-prompt-anh">
-      <h1>Prompt ảnh</h1>
-      <div class="the the-sap-co">
-        <div class="nhan-sap-co">Bản 0.5.0</div>
-        <p>11.000 từ ÷ 27 từ/cảnh ≈ <b>407 cảnh</b>. Có tuỳ chọn gộp 2 cảnh một ảnh (còn ~200 ảnh, mỗi ảnh ~18
-          giây màn hình) để khối lượng render không thành bất khả thi.</p>
-        <p class="ghi-chu">Kho nhân vật giữ nhất quán bằng cách chèn <b>nguyên văn</b> đoạn mô tả nhân vật vào mọi
-          cảnh có nhân vật đó. Xuất <code>prompts.txt</code> mỗi dòng một prompt cho Flow Automation Studio, và tên
-          ảnh <code>001.png…</code> cho CapCut Draft Studio xếp đúng thứ tự.</p>
+      <h1>Prompt ảnh — cắt cảnh và sinh prompt hàng loạt</h1>
+
+      <div class="the the-du-an">
+        <label class="nhan">Dự án</label>
+        <select class="chon-du-an o-dai"></select>
+        <div class="ghi-chu thong-tin-du-an"></div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Bước 1 — Cắt cảnh</label>
+        <div class="hang-nut">
+          <label class="o-inline">Từ mỗi cảnh <input type="number" id="o-tu-moi-canh" min="15" max="45" value="27"></label>
+          <label class="o-inline">Gộp cảnh
+            <select id="o-gop-canh">
+              <option value="1">1 cảnh = 1 ảnh</option>
+              <option value="2">2 cảnh = 1 ảnh (giảm nửa số ảnh)</option>
+              <option value="3">3 cảnh = 1 ảnh</option>
+            </select>
+          </label>
+          <button id="nut-cat-canh" class="nut nut-chinh">Cắt cảnh</button>
+        </div>
+        <div id="thong-ke-canh" class="hop-uoc"></div>
+      </div>
+
+      <div class="the">
+        <label class="nhan" id="kho-nhan-vat-nhan">Kho nhân vật — cách giữ mặt nhân vật giống nhau qua hàng trăm cảnh</label>
+        <p class="ghi-chu">Mỗi nhân vật có <b>một đoạn mô tả cố định</b>. Cảnh nào có nhân vật đó thì tool chèn
+          <b>nguyên văn</b> đoạn mô tả ấy vào prompt. Đó là thứ duy nhất thật sự hiệu quả — đừng trông chờ mô hình "nhớ" mặt.</p>
+        <div id="kho-nhan-vat"></div>
+        <div class="hang-nut">
+          <input id="nhap-ten-nhan-vat" class="o-nho" placeholder="Tên (vd: the old keeper)">
+          <input id="nhap-mo-ta-nhan-vat" class="o-dai" placeholder="Mô tả cố định: a weathered man in his seventies, grey beard, heavy wool coat">
+          <button id="nut-them-nhan-vat" class="nut nut-chinh">Thêm</button>
+        </div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Bước 2 — Mô tả cảnh (tuỳ chọn, nhờ Claude)</label>
+        <p class="ghi-chu">Không làm bước này thì tool dùng thẳng câu trong kịch bản làm nội dung ảnh — nhanh nhưng thô.
+          Làm bước này thì prompt sát hình ảnh hơn hẳn. Chia lô để câu trả lời không bị cắt giữa chừng.</p>
+        <div class="hang-nut">
+          <label class="o-inline">Lô số <input type="number" id="o-lo-thu" min="1" value="1"></label>
+          <button id="nut-prompt-mo-ta" class="nut nut-chinh">Chép prompt lô này</button>
+          <span id="ghi-chu-lo" class="ghi-chu"></span>
+        </div>
+        <textarea id="o-mo-ta-tra-ve" rows="5" placeholder="Dán JSON Claude trả về vào đây (dán được cả khi có lời dẫn hoặc khối mã)"></textarea>
+        <div class="hang-nut">
+          <button id="nut-doc-mo-ta" class="nut nut-xanh">Đọc JSON</button>
+          <span id="ket-qua-mo-ta" class="ghi-chu"></span>
+        </div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Bước 3 — Sinh prompt và xuất</label>
+        <div class="hang-nut">
+          <button id="nut-tao-prompt" class="nut nut-chinh">Sinh toàn bộ prompt</button>
+          <button id="nut-xuat-prompt" class="nut nut-xanh nut-to">Xuất cho Flow + CapCut</button>
+          <span id="ghi-chu-xuat" class="ghi-chu"></span>
+        </div>
+        <p class="ghi-chu"><b>Bất biến:</b> số thứ tự liên tục từ 1, không bỏ số. Flow Automation Studio tra
+          <code>prompts[index-1]</code> theo số thứ tự toàn cục — thiếu một số là lệch tên tệp cả mẻ, và nó sai im lặng.</p>
+        <div class="cuon-bang"><table id="bang-canh"></table></div>
       </div>
     </section>
 
@@ -196,7 +389,27 @@
       </div>
 
       <div class="the">
-        <label class="nhan">Kịch bản &amp; prompt ảnh <span class="the-nho">dùng từ bản 0.4</span></label>
+        <label class="nhan">Kênh theo dõi</label>
+        <div class="luoi-cai-dat">
+          <label>Số video mỗi kênh mỗi lần quét
+            <input type="number" data-khoa="soVideoMoiKenh" min="5" max="50"></label>
+          <label>Vượt trung vị mấy lần thì NỔ VIEW
+            <input type="number" data-khoa="nguongNoView" min="1.5" max="10" step="0.5"></label>
+          <label>Ngưỡng TỐT
+            <input type="number" data-khoa="nguongTot" min="1.1" max="5" step="0.1"></label>
+        </div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Lời thoại</label>
+        <label class="o-danh-dau"><input type="checkbox" data-khoa="dungCookie">
+          Dùng cookie của tài khoản đã đăng nhập khi YouTube đòi xác minh</label>
+        <p class="ghi-chu">Chỉ bật khi cần: tệp cookie chứa phiên đăng nhập thật. Tool ghi ra rồi
+          <b>xoá ngay</b> sau khi yt-dlp chạy xong.</p>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Kịch bản &amp; prompt ảnh</label>
         <div class="luoi-cai-dat">
           <label>Số từ mục tiêu mỗi kịch bản
             <input type="number" data-khoa="soTuMucTieu" min="1000" step="500"></label>
@@ -206,7 +419,13 @@
             <input type="number" data-khoa="tuMoiPhut" min="80" max="220"></label>
           <label>Từ mỗi cảnh (25–30)
             <input type="number" data-khoa="tuMoiCanh" min="15" max="45"></label>
+          <label>Gộp mấy cảnh một ảnh
+            <input type="number" data-khoa="gopCanh" min="1" max="4"></label>
+          <label>Số cảnh mỗi lô hỏi Claude
+            <input type="number" data-khoa="soCanhMoiLo" min="10" max="120" step="10"></label>
         </div>
+        <label class="nhan-nho">Template prompt ảnh (để trống = dùng mặc định)</label>
+        <input data-khoa="templatePrompt" class="o-dai" placeholder="{style}, {camera}, {canh}, {nhanVat}, {boiCanh}, {anhSang}, {khongKhi}, {duoi}">
         <div id="uoc-kich-ban" class="hop-uoc"></div>
       </div>
 
@@ -236,21 +455,23 @@
           <li>Thanh trên cùng → <b>New Project</b> → đặt tên <code>tool-y-tuong</code>.</li>
           <li><b>APIs &amp; Services → Library</b> → tìm <code>YouTube Data API v3</code> → <b>Enable</b>.</li>
           <li><b>APIs &amp; Services → Credentials → Create credentials → API key</b> → copy khoá.</li>
-          <li>Bấm <b>Edit</b> khoá → <b>API restrictions</b> → chọn riêng <code>YouTube Data API v3</code>.</li>
+          <li>Bấm <b>Edit</b> khoá → <b>Application restrictions</b> để <b>None</b> → <b>API restrictions</b> chọn riêng <code>YouTube Data API v3</code>.</li>
           <li>Dán vào <b>Cài đặt → Thêm khoá</b> của tool.</li>
         </ol>
-        <p class="ghi-chu">Không cần bật billing, không cần OAuth consent screen. Nếu Google hỏi thẻ tín dụng
-          thì anh đang ở trang khác — khoá API không đi qua bước đó.</p>
+        <p class="ghi-chu">Không cần bật billing. Nếu Google hỏi thẻ tín dụng thì anh đang ở trang khác.
+          <b>Bẫy hay gặp nhất:</b> chọn <i>HTTP referrers</i> ở Application restrictions — làm vậy tool bị từ chối,
+          mà thông báo lỗi lại giống hệt lỗi "khoá sai".</p>
       </div>
 
       <div class="the">
-        <label class="nhan">Quy trình dùng hằng ngày</label>
+        <label class="nhan">Quy trình đủ một video</label>
         <ol class="danh-sach-buoc">
-          <li>Màn <b>Ý tưởng</b> → nhập 3–6 từ khóa rời rạc → <b>Ghép 5 từ khóa</b>.</li>
-          <li>Xem 5 đề xuất, sửa/xoá cụm nào không thích. Bước này chưa tốn quota.</li>
-          <li>Xem dòng "lượt tìm này tốn khoảng … đơn vị" rồi mới bấm <b>Tìm video</b>.</li>
-          <li>Lọc <b>Chỉ NỔ VIEW</b> để xem video bất thường so với chính kênh của nó.</li>
-          <li><b>Xuất Excel</b> để lưu lại, file có thêm trang ghi điều kiện tìm.</li>
+          <li><b>Ý tưởng</b> → ghép 5 từ khóa (miễn phí) → sửa lại → <b>Tìm video</b>.</li>
+          <li><b>Kênh theo dõi</b> → thêm các kênh đối thủ → quét mỗi ngày (3 đơn vị/kênh) để bắt video nổ sớm.</li>
+          <li><b>Lời thoại</b> → tạo dự án → dán 2–4 link video → lấy phụ đề.</li>
+          <li><b>Kịch bản</b> → chép prompt dàn ý → dán sang Claude → dán dàn ý về → làm từng phần một.</li>
+          <li><b>Kiểm duyệt</b> → chạy → sửa theo danh sách hướng sửa → chạy lại.</li>
+          <li><b>Prompt ảnh</b> → cắt cảnh → khai nhân vật → sinh prompt → xuất cho Flow.</li>
         </ol>
       </div>
 
@@ -265,13 +486,15 @@
       </div>
 
       <div class="the the-canh-bao">
-        <label class="nhan">Hai điều cần biết trước</label>
+        <label class="nhan">Ba điều cần biết trước</label>
         <p><b>Quota là giới hạn cứng.</b> 10.000 đơn vị/ngày cho mỗi khoá, mỗi lượt tìm 5 từ khóa tốn khoảng
-          500 đơn vị → khoảng 19 lượt/ngày. Không mua thêm được. Tạo nhiều project Google chỉ để nhân quota là
+          680 đơn vị → khoảng 14 lượt/ngày. Không mua thêm được. Tạo nhiều project Google chỉ để nhân quota là
           vi phạm điều khoản và có thể bị khoá hết.</p>
         <p><b>Chính sách nội dung dùng lại.</b> Viết lại lời thoại video người khác đúng là thứ YouTube nhắm tới:
           nội dung trông như làm từ khuôn mẫu, lặp lại, ít bình luận riêng thì không bật được tiền. Tool đo được
-          độ giống bản gốc từ bản 0.4, nhưng không tool nào bảo đảm kết quả.</p>
+          độ giống bản gốc, nhưng <b>không tool nào bảo đảm kết quả</b>.</p>
+        <p><b>Quét chính sách là gắn cờ rủi ro, không phải xác nhận an toàn.</b> Không có cờ nào không có nghĩa
+          là kịch bản chắc chắn qua được.</p>
       </div>
 
       <div class="the">

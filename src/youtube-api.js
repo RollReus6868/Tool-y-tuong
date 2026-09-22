@@ -41,6 +41,34 @@ function chia(mang, co) {
   return ra
 }
 
+// Người dùng sẽ dán đủ kiểu: link đầy đủ, @handle, hoặc chính kenhId. Hàm
+// thuần này quy về một mối — kiểm thử tầng 1 gọi thẳng được.
+//
+// Lưu ý: KHÔNG được dùng search.list để tra kênh theo tên (100 đơn vị quota
+// mỗi lần). channels.list với forHandle chỉ tốn 1 đơn vị.
+function tachDinhDanhKenh(chu) {
+  const s = String(chu || '').trim()
+  if (!s) return null
+
+  // Chính kenhId: luôn bắt đầu bằng UC và dài 24 ký tự.
+  if (/^UC[A-Za-z0-9_-]{22}$/.test(s)) return { loai: 'id', giaTri: s }
+
+  // @handle gõ trực tiếp.
+  if (/^@[A-Za-z0-9._-]+$/.test(s)) return { loai: 'handle', giaTri: s }
+
+  // Các dạng link.
+  const m = s.match(/youtube\.com\/(channel\/(UC[A-Za-z0-9_-]{22})|(@[A-Za-z0-9._-]+)|(?:c|user)\/([A-Za-z0-9._-]+))/i)
+  if (m) {
+    if (m[2]) return { loai: 'id', giaTri: m[2] }
+    if (m[3]) return { loai: 'handle', giaTri: m[3] }
+    if (m[4]) return { loai: 'tenCu', giaTri: m[4] }
+  }
+
+  // Còn lại: coi như handle thiếu dấu @.
+  if (/^[A-Za-z0-9._-]+$/.test(s)) return { loai: 'handle', giaTri: '@' + s }
+  return null
+}
+
 // layJSONHam nhồi được từ ngoài để kiểm thử tầng 1 không cần mạng.
 function taoKhachHang({ layJSONHam, boDem, idKhoa, khoa, nhatKy = { tin() {}, loi() {} } }) {
   let daDungPhien = 0
@@ -147,6 +175,66 @@ function taoKhachHang({ layJSONHam, boDem, idKhoa, khoa, nhatKy = { tin() {}, lo
       return ra
     },
 
+    // Tìm một kênh từ thứ người dùng dán vào: link, @handle, hay chính kenhId.
+    // 1 đơn vị quota — KHÔNG dùng search.list (100 đơn vị) cho việc này.
+    async kenhTheoDinhDanh(dinhDanh) {
+      const d = tachDinhDanhKenh(dinhDanh)
+      if (!d) return null
+      const thamSo = { part: 'snippet,statistics,contentDetails', maxResults: 1 }
+      if (d.loai === 'id') thamSo.id = d.giaTri
+      else if (d.loai === 'handle') thamSo.forHandle = d.giaTri
+      else thamSo.forUsername = d.giaTri
+
+      const kq = await goi('channels.list', thamSo, 1)
+      const c = (kq.items || [])[0]
+      if (!c) return null
+      return {
+        kenhId: c.id,
+        tenKenh: c.snippet?.title || '',
+        moTa: (c.snippet?.description || '').slice(0, 300),
+        anh: c.snippet?.thumbnails?.default?.url || '',
+        subKenh: Number(c.statistics?.subscriberCount || 0),
+        tongVideo: Number(c.statistics?.videoCount || 0),
+        tongView: Number(c.statistics?.viewCount || 0),
+        playlistTaiLen: c.contentDetails?.relatedPlaylists?.uploads || ''
+      }
+    },
+
+    // Danh sách videoId mới nhất của một kênh. 1 đơn vị quota.
+    async videoMoiNhat(playlistTaiLen, soLuong = 20) {
+      if (!playlistTaiLen) return []
+      const kq = await goi('playlistItems.list', {
+        part: 'contentDetails',
+        playlistId: playlistTaiLen,
+        maxResults: Math.min(50, soLuong)
+      }, 1)
+      return (kq.items || []).map((m) => m.contentDetails?.videoId).filter(Boolean)
+    },
+
+    // Bảng xếp hạng thịnh hành theo quốc gia. 1 đơn vị quota — rẻ hơn
+    // search.list đúng 100 lần.
+    async videoThinhHanh({ regionCode = 'US', soLuong = 50, danhMuc } = {}) {
+      const kq = await goi('videos.list', {
+        part: 'snippet,statistics,contentDetails',
+        chart: 'mostPopular',
+        regionCode,
+        videoCategoryId: danhMuc,
+        maxResults: Math.min(50, soLuong)
+      }, 1)
+      return (kq.items || []).map((v) => ({
+        videoId: v.id,
+        tieuDe: v.snippet?.title || '',
+        kenhId: v.snippet?.channelId || '',
+        tenKenh: v.snippet?.channelTitle || '',
+        ngayDang: v.snippet?.publishedAt || '',
+        views: Number(v.statistics?.viewCount || 0),
+        likes: Number(v.statistics?.likeCount || 0),
+        binhLuan: Number(v.statistics?.commentCount || 0),
+        thoiLuongGiay: giayTuISO(v.contentDetails?.duration || ''),
+        lienKet: `https://www.youtube.com/watch?v=${v.id}`
+      }))
+    },
+
     // Trung vị view của 20 video gần nhất của một kênh. 2 đơn vị quota/kênh.
     // Đây là chỉ số đáng tin nhất để nói "video này nổ so với chính kênh đó".
     async trungViKenh(playlistTaiLen) {
@@ -174,4 +262,12 @@ function ngayTuTruoc(soNgay) {
   return new Date(Date.now() - soNgay * 86400000).toISOString()
 }
 
-module.exports = { taoKhachHang, ngayTuTruoc, ghepURL, chia, LoiQuota, LoiKhoa }
+module.exports = {
+  taoKhachHang,
+  ngayTuTruoc,
+  ghepURL,
+  chia,
+  tachDinhDanhKenh,
+  LoiQuota,
+  LoiKhoa
+}
