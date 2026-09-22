@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Tool Ý Tưởng</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="khung">
+
+  <!-- ================= SIDEBAR ================= -->
+  <aside id="sidebar">
+    <div id="hieu">
+      <div id="hieu-dau">ÝT</div>
+      <div>
+        <div id="hieu-ten">Tool Ý Tưởng</div>
+        <div id="hieu-phien-ban">—</div>
+      </div>
+    </div>
+
+    <nav id="menu">
+      <div class="nhom-menu">Nghiên cứu</div>
+      <button class="muc" data-man="y-tuong"><span class="ico">◈</span> Ý tưởng</button>
+      <button class="muc" data-man="kenh"><span class="ico">◎</span> Kênh theo dõi</button>
+
+      <div class="nhom-menu">Sản xuất</div>
+      <button class="muc" data-man="loi-thoai"><span class="ico">≡</span> Lời thoại</button>
+      <button class="muc" data-man="kich-ban"><span class="ico">✎</span> Kịch bản</button>
+      <button class="muc" data-man="kiem-duyet"><span class="ico">⚑</span> Kiểm duyệt</button>
+      <button class="muc" data-man="prompt-anh"><span class="ico">▣</span> Prompt ảnh</button>
+
+      <div class="nhom-menu">Hệ thống</div>
+      <button class="muc" data-man="cai-dat"><span class="ico">⚙</span> Cài đặt</button>
+      <button class="muc" data-man="huong-dan"><span class="ico">?</span> Hướng dẫn</button>
+      <button class="muc" data-man="nhat-ky"><span class="ico">▤</span> Nhật ký</button>
+    </nav>
+
+    <div id="quota-hop">
+      <div class="quota-nhan">Quota API hôm nay</div>
+      <div id="quota-con-lai">chưa có khoá</div>
+      <div id="quota-ngay" class="quota-phu"></div>
+    </div>
+  </aside>
+
+  <!-- ================= NỘI DUNG ================= -->
+  <main id="noi-dung">
+
+    <!-- ---------- Ý TƯỞNG ---------- -->
+    <section class="man" id="man-y-tuong">
+      <h1>Ý tưởng — tìm video nổ view 14 ngày</h1>
+      <p class="dan">Nhập các từ khóa rời rạc, mỗi từ cách nhau bằng dấu phẩy. Tool ghép thành 5 từ khóa
+        đáng tìm nhất bằng gợi ý tìm kiếm thật của YouTube — bước này <b>miễn phí, không tốn quota</b>.</p>
+
+      <div class="the">
+        <label class="nhan" for="nhap-tu-khoa">Từ khóa rời rạc</label>
+        <textarea id="nhap-tu-khoa" rows="3" placeholder="bible stories, trump, black america, hidden history"></textarea>
+        <div class="hang-nut">
+          <button id="nut-ghep" class="nut nut-chinh">Ghép 5 từ khóa</button>
+          <span id="ghi-chu-ghep" class="ghi-chu"></span>
+        </div>
+      </div>
+
+      <div class="the" id="the-de-xuat" hidden>
+        <label class="nhan">5 từ khóa đề xuất — sửa được trước khi tìm</label>
+        <div id="danh-sach-de-xuat"></div>
+        <div class="hop-chi-phi">
+          <div>Lượt tìm này tốn khoảng <b id="chi-phi-uoc">—</b> đơn vị quota</div>
+          <div id="chi-phi-con-lai" class="quota-phu"></div>
+        </div>
+        <div class="hang-nut">
+          <button id="nut-tim" class="nut nut-chinh nut-to">Tìm video</button>
+          <button id="nut-xem-tat-ca" class="nut nut-phu">Xem toàn bộ ứng viên</button>
+        </div>
+        <details id="chi-tiet-ung-vien"><summary>Bảng điểm ứng viên</summary><div id="bang-ung-vien"></div></details>
+      </div>
+
+      <div class="the" id="the-ket-qua" hidden>
+        <div class="hang-dau-bang">
+          <div>
+            <span class="nhan">Kết quả</span>
+            <span id="tom-tat-ket-qua" class="ghi-chu"></span>
+          </div>
+          <div class="hang-nut">
+            <button id="nut-xuat-excel" class="nut nut-xanh">Xuất Excel</button>
+          </div>
+        </div>
+        <div class="loc-nhanh">
+          <button class="chip chip-chon" data-loc="tat-ca">Tất cả</button>
+          <button class="chip" data-loc="NỔ VIEW">Chỉ NỔ VIEW</button>
+          <button class="chip" data-loc="TỐT">TỐT trở lên</button>
+        </div>
+        <div class="cuon-bang"><table id="bang-ket-qua"></table></div>
+      </div>
+    </section>
+
+    <!-- ---------- CÁC MÀN CHƯA LÀM ---------- -->
+    <section class="man" id="man-kenh">
+      <h1>Kênh theo dõi</h1>
+      <div class="the the-sap-co">
+        <div class="nhan-sap-co">Bản 0.2.0</div>
+        <p>Theo dõi danh sách kênh, mỗi ngày quét 20 video mới nhất của từng kênh và so với
+          <b>trung vị view của chính kênh đó</b> — video vượt 3 lần thì gắn cờ NỔ VIEW.</p>
+        <p class="ghi-chu">Quét 1 kênh tốn 3 đơn vị quota, nên theo dõi 100 kênh mỗi ngày chỉ mất 300 đơn vị.
+          Trang chủ từng kênh và trang Trending sẽ đọc bằng tab trình duyệt trong app, vì API không cho biết
+          kênh đang ghim video nào.</p>
+      </div>
+    </section>
+
+    <section class="man" id="man-loi-thoai">
+      <h1>Lời thoại</h1>
+      <div class="the the-sap-co">
+        <div class="nhan-sap-co">Bản 0.3.0</div>
+        <p>Lấy phụ đề bằng yt-dlp (định dạng <code>json3</code>, không dùng <code>vtt</code> vì phụ đề tự động
+          kiểu cuộn sẽ ra văn bản lặp 2–3 lần), thiếu phụ đề thì phiên âm bằng whisper.cpp model
+          <code>base.en</code> ngay trên máy.</p>
+        <p class="ghi-chu">Cho phép gộp 2–4 video vào một dự án: kịch bản 11.000 từ cần nhiều tư liệu hơn một
+          video, và trộn nhiều nguồn cũng xa "reused content" hơn là bám một video duy nhất.</p>
+      </div>
+    </section>
+
+    <section class="man" id="man-kich-ban">
+      <h1>Kịch bản</h1>
+      <div class="the the-sap-co">
+        <div class="nhan-sap-co">Bản 0.4.0</div>
+        <p>Mục tiêu 10.000–12.000 từ nên <b>không xin một phát</b>: trước tiên xin dàn ý 8 phần có hạn mức từ,
+          rồi 8 prompt riêng, mỗi prompt kèm 200 từ cuối của phần trước và <b>sổ chống lặp</b> (các cụm 4/8 từ,
+          các câu mở đầu, các ẩn dụ đã dùng) để phần sau không nói lại phần trước.</p>
+        <p class="ghi-chu">Skill viết kịch bản của anh tải lên ở Cài đặt; tool ghép vào prompt, anh dán sang
+          Claude rồi dán kết quả về từng phần.</p>
+      </div>
+    </section>
+
+    <section class="man" id="man-kiem-duyet">
+      <h1>Kiểm duyệt</h1>
+      <div class="the the-sap-co">
+        <div class="nhan-sap-co">Bản 0.4.0</div>
+        <p>Chạy cục bộ, không cần AI: đo cụm 4/8 từ lặp, câu gần trùng (tương đồng ≥ 0,8), ma trận tương đồng
+          giữa 8 phần, bản đồ nhiệt 100 khối, và <b>% trùng 5-gram với lời thoại gốc</b> — cảnh báo vàng từ 8%,
+          đỏ từ 20%.</p>
+        <p class="ghi-chu">Quét chính sách là <b>gắn cờ rủi ro</b>, không phải xác nhận an toàn. Nội dung chính trị
+          hoặc chủng tộc luôn hiện cảnh báo vàng vì rất dễ bị giới hạn quảng cáo.</p>
+      </div>
+    </section>
+
+    <section class="man" id="man-prompt-anh">
+      <h1>Prompt ảnh</h1>
+      <div class="the the-sap-co">
+        <div class="nhan-sap-co">Bản 0.5.0</div>
+        <p>11.000 từ ÷ 27 từ/cảnh ≈ <b>407 cảnh</b>. Có tuỳ chọn gộp 2 cảnh một ảnh (còn ~200 ảnh, mỗi ảnh ~18
+          giây màn hình) để khối lượng render không thành bất khả thi.</p>
+        <p class="ghi-chu">Kho nhân vật giữ nhất quán bằng cách chèn <b>nguyên văn</b> đoạn mô tả nhân vật vào mọi
+          cảnh có nhân vật đó. Xuất <code>prompts.txt</code> mỗi dòng một prompt cho Flow Automation Studio, và tên
+          ảnh <code>001.png…</code> cho CapCut Draft Studio xếp đúng thứ tự.</p>
+      </div>
+    </section>
+
+    <!-- ---------- CÀI ĐẶT ---------- -->
+    <section class="man" id="man-cai-dat">
+      <h1>Cài đặt</h1>
+
+      <div class="the">
+        <label class="nhan">Khoá API YouTube</label>
+        <p class="ghi-chu">Miễn phí, không cần thẻ tín dụng. Mỗi khoá được 10.000 đơn vị/ngày, reset 0h giờ
+          Pacific (khoảng 14–15h giờ Việt Nam). Xem <b>Hướng dẫn</b> để biết 6 bước lấy khoá.</p>
+        <div id="danh-sach-khoa"></div>
+        <div class="hang-nut">
+          <input id="nhap-ten-khoa" class="o-nho" placeholder="Tên gợi nhớ (vd: khoá chính)">
+          <input id="nhap-khoa" class="o-dai" placeholder="AIza..." spellcheck="false">
+          <button id="nut-them-khoa" class="nut nut-chinh">Thêm khoá</button>
+        </div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Tìm kiếm</label>
+        <div class="luoi-cai-dat">
+          <label>Số video mỗi từ khóa
+            <input type="number" data-khoa="soVideoMoiTuKhoa" min="10" max="50" step="5"></label>
+          <label>Khoảng thời gian (ngày)
+            <select data-khoa="soNgay"><option value="7">7</option><option value="14">14</option><option value="30">30</option></select></label>
+          <label>View tối thiểu
+            <input type="number" data-khoa="viewToiThieu" min="0" step="1000"></label>
+          <label>Thời lượng tối thiểu (giây)
+            <input type="number" data-khoa="thoiLuongToiThieuGiay" min="0" step="10"></label>
+          <label>Loại kênh trên (triệu sub, 0 = không loại)
+            <input type="number" data-khoa="subToiDaTrieu" min="0" step="1"></label>
+          <label>Quốc gia
+            <input data-khoa="regionCode" maxlength="2"></label>
+          <label>Ngôn ngữ
+            <input data-khoa="relevanceLanguage" maxlength="5"></label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="boShorts"> Bỏ Shorts (dưới 61 giây)</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="chiVideoDai"> Chỉ video ≥ 20 phút (cùng hạng với kênh mình)</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="tinhVuotTrungViKenh"> Tính vượt trung vị kênh (chính xác nhất, +2 đơn vị quota mỗi kênh)</label>
+        </div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Kịch bản &amp; prompt ảnh <span class="the-nho">dùng từ bản 0.4</span></label>
+        <div class="luoi-cai-dat">
+          <label>Số từ mục tiêu mỗi kịch bản
+            <input type="number" data-khoa="soTuMucTieu" min="1000" step="500"></label>
+          <label>Số phần chia kịch bản
+            <input type="number" data-khoa="soPhanKichBan" min="2" max="20"></label>
+          <label>Từ mỗi phút (ước thời lượng)
+            <input type="number" data-khoa="tuMoiPhut" min="80" max="220"></label>
+          <label>Từ mỗi cảnh (25–30)
+            <input type="number" data-khoa="tuMoiCanh" min="15" max="45"></label>
+        </div>
+        <div id="uoc-kich-ban" class="hop-uoc"></div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Cập nhật</label>
+        <label class="o-danh-dau"><input type="checkbox" data-khoa="tuDongKiemCapNhat"> Tự kiểm tra bản mới khi mở app</label>
+        <div class="hang-nut">
+          <button id="nut-kiem-cap-nhat" class="nut nut-phu">Kiểm tra bản mới</button>
+          <span id="ket-qua-cap-nhat" class="ghi-chu"></span>
+        </div>
+      </div>
+
+      <div class="hang-nut">
+        <button id="nut-luu-cai-dat" class="nut nut-chinh nut-to">Lưu cài đặt</button>
+        <span id="ghi-chu-luu" class="ghi-chu"></span>
+      </div>
+    </section>
+
+    <!-- ---------- HƯỚNG DẪN ---------- -->
+    <section class="man" id="man-huong-dan">
+      <h1>Hướng dẫn sử dụng</h1>
+
+      <div class="the">
+        <label class="nhan">Lấy khoá API YouTube — miễn phí, không cần thẻ</label>
+        <ol class="danh-sach-buoc">
+          <li>Mở <a href="#" data-ngoai="https://console.cloud.google.com">console.cloud.google.com</a>, đăng nhập bằng Gmail bất kỳ.</li>
+          <li>Thanh trên cùng → <b>New Project</b> → đặt tên <code>tool-y-tuong</code>.</li>
+          <li><b>APIs &amp; Services → Library</b> → tìm <code>YouTube Data API v3</code> → <b>Enable</b>.</li>
+          <li><b>APIs &amp; Services → Credentials → Create credentials → API key</b> → copy khoá.</li>
+          <li>Bấm <b>Edit</b> khoá → <b>API restrictions</b> → chọn riêng <code>YouTube Data API v3</code>.</li>
+          <li>Dán vào <b>Cài đặt → Thêm khoá</b> của tool.</li>
+        </ol>
+        <p class="ghi-chu">Không cần bật billing, không cần OAuth consent screen. Nếu Google hỏi thẻ tín dụng
+          thì anh đang ở trang khác — khoá API không đi qua bước đó.</p>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Quy trình dùng hằng ngày</label>
+        <ol class="danh-sach-buoc">
+          <li>Màn <b>Ý tưởng</b> → nhập 3–6 từ khóa rời rạc → <b>Ghép 5 từ khóa</b>.</li>
+          <li>Xem 5 đề xuất, sửa/xoá cụm nào không thích. Bước này chưa tốn quota.</li>
+          <li>Xem dòng "lượt tìm này tốn khoảng … đơn vị" rồi mới bấm <b>Tìm video</b>.</li>
+          <li>Lọc <b>Chỉ NỔ VIEW</b> để xem video bất thường so với chính kênh của nó.</li>
+          <li><b>Xuất Excel</b> để lưu lại, file có thêm trang ghi điều kiện tìm.</li>
+        </ol>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Hiểu cột điểm</label>
+        <table class="bang-giai-thich">
+          <tr><td><b>View/giờ</b></td><td>View chia số giờ từ lúc đăng. Video 2 ngày 100k mạnh hơn video 13 ngày 300k.</td></tr>
+          <tr><td><b>View/Sub</b></td><td>Vượt quy mô kênh. Trên 1 là video vượt số sub, trên 5 là rất mạnh.</td></tr>
+          <tr><td><b>Vượt trung vị kênh</b></td><td>So với trung vị 20 video gần nhất của chính kênh đó — đáng tin nhất. Từ 3 lần trở lên là NỔ VIEW.</td></tr>
+          <tr><td><b>Điểm</b></td><td>Ba chỉ số trên chuẩn hoá rồi cộng theo trọng số 0,40 / 0,25 / 0,35.</td></tr>
+        </table>
+      </div>
+
+      <div class="the the-canh-bao">
+        <label class="nhan">Hai điều cần biết trước</label>
+        <p><b>Quota là giới hạn cứng.</b> 10.000 đơn vị/ngày cho mỗi khoá, mỗi lượt tìm 5 từ khóa tốn khoảng
+          500 đơn vị → khoảng 19 lượt/ngày. Không mua thêm được. Tạo nhiều project Google chỉ để nhân quota là
+          vi phạm điều khoản và có thể bị khoá hết.</p>
+        <p><b>Chính sách nội dung dùng lại.</b> Viết lại lời thoại video người khác đúng là thứ YouTube nhắm tới:
+          nội dung trông như làm từ khuôn mẫu, lặp lại, ít bình luận riêng thì không bật được tiền. Tool đo được
+          độ giống bản gốc từ bản 0.4, nhưng không tool nào bảo đảm kết quả.</p>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Tệp và thư mục</label>
+        <div id="thong-tin-tep"></div>
+        <div class="hang-nut"><button id="nut-mo-thu-muc" class="nut nut-phu">Mở thư mục dữ liệu</button></div>
+      </div>
+    </section>
+
+    <!-- ---------- NHẬT KÝ ---------- -->
+    <section class="man" id="man-nhat-ky">
+      <h1>Nhật ký</h1>
+      <p class="dan">Mọi việc đều ghi ra file. Khi có lỗi, <b>dòng cuối cùng</b> là chỗ định vị chính xác
+        vấn đề — gửi nguyên file này chứ đừng chỉ chụp ảnh màn hình.</p>
+      <div class="hang-nut">
+        <button id="nut-tai-nhat-ky" class="nut nut-phu">Tải lại</button>
+        <span id="duong-dan-nhat-ky" class="ghi-chu"></span>
+      </div>
+      <pre id="khung-nhat-ky"></pre>
+    </section>
+
+  </main>
+</div>
+
+<!-- ================= THANH TIẾN ĐỘ 3 TẦNG ================= -->
+<footer id="thanh-tien-do">
+  <div id="tien-do-tang1">
+    <div id="tien-do-viec">Sẵn sàng</div>
+    <div id="tien-do-thanh"><div id="tien-do-day"></div></div>
+    <div id="tien-do-phan-tram">0%</div>
+  </div>
+  <div id="tien-do-tang2">
+    <span id="tien-do-chi-tiet"></span>
+    <span id="tien-do-loi"></span>
+  </div>
+</footer>
+
+<div id="man-che" hidden><div id="hop-thoai"><div id="hop-thoai-chu"></div><div id="hop-thoai-nut"></div></div></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+// Chấm điểm video: phát hiện "nổ view".
+//
+// View thô KHÔNG phải tín hiệu — kênh 10 triệu sub video nào cũng nhiều view.
+// Ba chỉ số dưới đây mới nói được "video này bất thường so với chính nó":
+//   VPH            = view mỗi giờ, chuẩn hoá theo tuổi video
+//   tỷ lệ view/sub = vượt quy mô kênh
+//   vượt trung vị  = so với 20 video gần nhất của CHÍNH kênh đó (đáng tin nhất)
+//
+// Toàn bộ mô-đun là hàm thuần.
+
+// Đọc thời lượng ISO-8601 của YouTube: PT1H2M3S, PT45S, P1DT2H...
+function giayTuISO(iso) {
+  if (typeof iso !== 'string') return 0
+  const m = iso.match(/^P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?$/)
+  if (!m) return 0
+  const [, ngay, gio, phut, giay] = m
+  return (Number(ngay || 0) * 86400) + (Number(gio || 0) * 3600) +
+         (Number(phut || 0) * 60) + Math.round(Number(giay || 0))
+}
+
+function trungVi(mang) {
+  const so = mang.filter((n) => Number.isFinite(n)).sort((a, b) => a - b)
+  if (!so.length) return 0
+  const giua = Math.floor(so.length / 2)
+  return so.length % 2 ? so[giua] : (so[giua - 1] + so[giua]) / 2
+}
+
+function zScore(mang) {
+  const so = mang.map((n) => (Number.isFinite(n) ? n : 0))
+  if (so.length < 2) return so.map(() => 0)
+  const tb = so.reduce((a, b) => a + b, 0) / so.length
+  const phuongSai = so.reduce((a, b) => a + (b - tb) ** 2, 0) / so.length
+  const lech = Math.sqrt(phuongSai)
+  if (lech === 0) return so.map(() => 0)
+  return so.map((n) => (n - tb) / lech)
+}
+
+function viewMoiGio(views, ngayDang, bayGio = Date.now()) {
+  const dang = new Date(ngayDang).getTime()
+  if (!Number.isFinite(dang)) return 0
+  const gio = Math.max(1, (bayGio - dang) / 3600000) // tối thiểu 1 giờ, tránh chia cho ~0
+  return views / gio
+}
+
+const TRONG_SO = { vph: 0.40, tyLeSub: 0.25, vuotTrungVi: 0.35 }
+
+function nhanTheoDiem(diem, vuotTrungVi) {
+  // Vượt trung vị kênh từ 3 lần trở lên thì là nổ view, bất kể điểm tổng hợp:
+  // đây là bằng chứng trực tiếp, không cần so với các video khác trong bảng.
+  if (vuotTrungVi >= 3) return 'NỔ VIEW'
+  if (diem >= 2) return 'NỔ VIEW'
+  if (diem >= 1.2) return 'TỐT'
+  if (diem >= 0.5) return 'KHÁ'
+  return 'BÌNH THƯỜNG'
+}
+
+// dong = { videoId, tieuDe, kenhId, tenKenh, views, likes, binhLuan, ngayDang,
+//          thoiLuongGiay, subKenh, trungViKenh? }
+function chamDiem(cacDong, { bayGio = Date.now() } = {}) {
+  if (!cacDong.length) return []
+
+  const daTinh = cacDong.map((d) => {
+    const vph = viewMoiGio(d.views, d.ngayDang, bayGio)
+    const tyLeSub = d.subKenh > 0 ? d.views / d.subKenh : 0
+    const vuotTrungVi = d.trungViKenh > 0 ? d.views / d.trungViKenh : 0
+    return { ...d, vph, tyLeSub, vuotTrungVi }
+  })
+
+  const zVph = zScore(daTinh.map((d) => Math.log10(1 + d.vph)))
+  const zSub = zScore(daTinh.map((d) => Math.log10(1 + d.tyLeSub)))
+  const zTV = zScore(daTinh.map((d) => Math.log10(1 + d.vuotTrungVi)))
+
+  return daTinh.map((d, i) => {
+    const diem = zVph[i] * TRONG_SO.vph + zSub[i] * TRONG_SO.tyLeSub + zTV[i] * TRONG_SO.vuotTrungVi
+    const lamTron = Math.round(diem * 100) / 100
+    return {
+      ...d,
+      vph: Math.round(d.vph),
+      tyLeSub: Math.round(d.tyLeSub * 100) / 100,
+      vuotTrungVi: Math.round(d.vuotTrungVi * 100) / 100,
+      diem: lamTron,
+      nhan: nhanTheoDiem(lamTron, d.vuotTrungVi)
+    }
+  }).sort((a, b) => b.diem - a.diem)
+}
+
+// Lọc theo cài đặt. Mặc định của kênh này: KHÔNG Shorts, chỉ video dài.
+function locVideo(cacDong, caiDat = {}) {
+  const {
+    boShorts = true,
+    thoiLuongToiThieuGiay = 61,
+    chiVideoDai = false,
+    viewToiThieu = 0,
+    subToiDaTrieu = 0
+  } = caiDat
+
+  const nguong = chiVideoDai ? Math.max(thoiLuongToiThieuGiay, 20 * 60) : thoiLuongToiThieuGiay
+
+  return cacDong.filter((d) => {
+    if (boShorts && d.thoiLuongGiay > 0 && d.thoiLuongGiay < 61) return false
+    if (d.thoiLuongGiay > 0 && d.thoiLuongGiay < nguong) return false
+    if (viewToiThieu > 0 && d.views < viewToiThieu) return false
+    if (subToiDaTrieu > 0 && d.subKenh > subToiDaTrieu * 1e6) return false
+    return true
+  })
+}
+
+module.exports = { giayTuISO, trungVi, zScore, viewMoiGio, chamDiem, locVideo, nhanTheoDiem, TRONG_SO }

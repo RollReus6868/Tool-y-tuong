@@ -1,0 +1,71 @@
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+name: Đóng gói Tool Ý Tưởng
+
+permissions:
+  contents: write
+
+jobs:
+
+  # Tầng 1 chạy trên chính hệ điều hành đích, không chỉ trên Linux: đường dẫn,
+  # phân biệt hoa thường và múi giờ là ba chỗ Windows/macOS hay khác Linux.
+  kiem-thu:
+    strategy:
+      fail-fast: false
+      matrix:
+        may: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.may }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node tests/run.js
+
+  windows:
+    needs: kiem-thu
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Dựng .exe và đẩy lên Releases
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.exe
+
+  macos:
+    needs: kiem-thu
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Dựng .dmg + .zip (Intel và Apple Silicon)
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Không có chứng chỉ Apple thì phải tắt hẳn khâu tự dò chữ ký, nếu
+          # không electron-builder dừng giữa chừng với "no identity found".
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            dist/*.dmg
+            dist/*.zip

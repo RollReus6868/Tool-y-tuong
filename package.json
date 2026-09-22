@@ -1,0 +1,97 @@
+{
+  "name": "tool-y-tuong",
+  "productName": "Tool Ý Tưởng",
+  "version": "0.1.0",
+  "description": "Tìm ý tưởng, viết kịch bản và tạo prompt ảnh cho kênh YouTube",
+  "main": "main.js",
+  "author": "Ngoc Lam",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RollReus6868/Tool-y-tuong.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "test": "node tests/run.js",
+    "smoke": "YT_SMOKE=1 electron --no-sandbox .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "exceljs": "^4.4.0"
+  },
+  "devDependencies": {
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.ngoclam.toolytuong",
+    "productName": "Tool Y Tuong",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "ui/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Tool Y Tuong"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "darkModeSupport": true,
+      "identity": null,
+      "hardenedRuntime": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "RollReus6868",
+        "repo": "Tool-y-tuong"
+      }
+    ]
+  }
+}
