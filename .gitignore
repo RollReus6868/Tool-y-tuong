@@ -1,5 +1,6 @@
 node_modules/
 dist/
 shots/
+Claude outputs/
 *.log
 .DS_Store

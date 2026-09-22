@@ -30,6 +30,13 @@ nhân, cả hai đều nằm ở cấu hình chứ không phải ở mã của t
 Workflow cũng được bọc vòng lặp thử lại 3 lần cho khâu tải lên, phòng khi mạng
 của máy chủ GitHub chập chờn thật.
 
+**Bản nháp trên Releases.** electron-builder mặc định tạo Release ở dạng
+**nháp** (`releaseType` mặc định là `draft`). Bản nháp chỉ chủ repo mới thấy và
+**không hiện ở mục Releases ngoài trang chủ**, nên xong build mà nhìn vào thấy
+trống trơn như chưa có gì — trong khi file `.exe` đã nằm sẵn trong đó. Từ bản
+này trở đi cấu hình đặt `"releaseType": "release"` để phát hành thẳng, khỏi phải
+vào bấm Publish tay.
+
 ### 0.1.0 — bản đầu tiên
 
 - **Màn Ý tưởng chạy được trọn vẹn**: ghép từ khóa rời rạc thành 5 cụm đáng

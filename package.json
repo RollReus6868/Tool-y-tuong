@@ -94,7 +94,8 @@
       {
         "provider": "github",
         "owner": "RollReus6868",
-        "repo": "Tool-y-tuong"
+        "repo": "Tool-y-tuong",
+        "releaseType": "release"
       }
     ]
   }
