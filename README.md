@@ -11,6 +11,25 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.1.1 — sửa khâu đóng gói, chưa đổi gì trong tool
+
+Bản 0.1.0 dựng được `.exe` nhưng không phát hành lên Releases được. Hai nguyên
+nhân, cả hai đều nằm ở cấu hình chứ không phải ở mã của tool:
+
+- **Hai bản build ghi đè lên nhau.** `artifactName` khai chung một dòng cho mọi
+  target, mà `nsis` (bản cài) và `portable` (bản chạy thẳng) đều ra đuôi `.exe`
+  → cùng tên `Tool Y Tuong-0.1.0-x64.exe`. Bản portable đè bản Setup ngay trên
+  đĩa, rồi lúc tải lên GitHub phải xoá file cũ tải lại, và chết giữa chừng ở đó
+  (`already exists on GitHub` → `Request timed out`). Nay mỗi target có tên
+  riêng: `...-Setup.exe` và `...-Portable.exe`.
+- **Thiếu `--publish` ghi rõ.** Bỏ trống thì electron-builder tự phát hiện đang
+  chạy trong CI rồi ngầm bật chế độ publish (*"Implicit publishing triggered by
+  CI detection"*) và chết vì không thấy `GH_TOKEN` — build đúng mà vẫn đỏ, log
+  thì toàn stack trace của `PublishManager` nên rất dễ đổ oan cho khâu đóng gói.
+
+Workflow cũng được bọc vòng lặp thử lại 3 lần cho khâu tải lên, phòng khi mạng
+của máy chủ GitHub chập chờn thật.
+
 ### 0.1.0 — bản đầu tiên
 
 - **Màn Ý tưởng chạy được trọn vẹn**: ghép từ khóa rời rạc thành 5 cụm đáng

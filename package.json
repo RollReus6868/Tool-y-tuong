@@ -1,7 +1,7 @@
 {
   "name": "tool-y-tuong",
   "productName": "Tool Ý Tưởng",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Tìm ý tưởng, viết kịch bản và tạo prompt ảnh cho kênh YouTube",
   "main": "main.js",
   "author": "Ngoc Lam",
@@ -62,7 +62,11 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Tool Y Tuong"
+      "shortcutName": "Tool Y Tuong",
+      "artifactName": "${productName}-${version}-${arch}-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-${arch}-Portable.${ext}"
     },
     "mac": {
       "target": [

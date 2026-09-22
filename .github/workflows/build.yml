@@ -37,26 +37,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # File .exe build xong rồi mới tới bước tải lên GitHub Releases — hai
-      # việc khác nhau. Việc build gần như không bao giờ hỏng giữa chừng, việc
-      # tải lên thì phụ thuộc mạng của runner GitHub và có lúc time-out giữa
-      # chừng (đã gặp thật). Bọc riêng bước tải lên trong vòng lặp thử lại,
-      # KHÔNG thử lại toàn bộ build (build lại tốn ~5-6 phút vô ích).
-      - name: Dựng .exe (không tải lên)
-        run: npx electron-builder --win
-      - name: Tải lên GitHub Releases — tự thử lại nếu mạng chập chờn
+      # LUÔN ghi rõ --publish. Bỏ trống thì electron-builder tự nhận ra đang
+      # chạy trong CI và ngầm bật chế độ publish ("Implicit publishing triggered
+      # by CI detection"), rồi chết vì không thấy GH_TOKEN — build đúng mà vẫn
+      # đỏ, log lại toàn stack trace của PublishManager nên rất dễ đổ oan cho
+      # khâu đóng gói.
+      - name: Dựng và đẩy .exe lên Releases — tự thử lại nếu mạng chập chờn
         shell: bash
         run: |
           for lan in 1 2 3; do
             echo "--- Lần thử $lan ---"
             if npx electron-builder --win --publish always; then
-              echo "Tải lên thành công ở lần $lan."
+              echo "Xong ở lần thử $lan."
               exit 0
             fi
-            echo "Lần $lan thất bại (thường do mạng time-out lúc tải lên, KHÔNG phải lỗi build). Chờ 20 giây rồi thử lại..."
+            echo "Lần $lan thất bại. Chờ 20 giây rồi thử lại..."
             sleep 20
           done
-          echo "Thất bại cả 3 lần. Xem log lần cuối ở trên để biết lý do thật."
+          echo "Thất bại cả 3 lần. Đọc log của lần cuối ở trên để biết lý do thật."
           exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,28 +73,24 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Dựng .dmg + .zip (không tải lên)
-        run: npx electron-builder --mac
-        env:
-          # Không có chứng chỉ Apple thì phải tắt hẳn khâu tự dò chữ ký, nếu
-          # không electron-builder dừng giữa chừng với "no identity found".
-          CSC_IDENTITY_AUTO_DISCOVERY: false
-      - name: Tải lên GitHub Releases — tự thử lại nếu mạng chập chờn
+      - name: Dựng và đẩy .dmg + .zip lên Releases — tự thử lại nếu mạng chập chờn
         shell: bash
         run: |
           for lan in 1 2 3; do
             echo "--- Lần thử $lan ---"
             if npx electron-builder --mac --publish always; then
-              echo "Tải lên thành công ở lần $lan."
+              echo "Xong ở lần thử $lan."
               exit 0
             fi
-            echo "Lần $lan thất bại (thường do mạng time-out lúc tải lên, KHÔNG phải lỗi build). Chờ 20 giây rồi thử lại..."
+            echo "Lần $lan thất bại. Chờ 20 giây rồi thử lại..."
             sleep 20
           done
-          echo "Thất bại cả 3 lần. Xem log lần cuối ở trên để biết lý do thật."
+          echo "Thất bại cả 3 lần. Đọc log của lần cuối ở trên để biết lý do thật."
           exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Không có chứng chỉ Apple thì phải tắt hẳn khâu tự dò chữ ký, nếu
+          # không electron-builder dừng giữa chừng với "no identity found".
           CSC_IDENTITY_AUTO_DISCOVERY: false
       - uses: actions/upload-artifact@v4
         with:
