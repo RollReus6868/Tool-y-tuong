@@ -36,8 +36,40 @@ function duocPhepMo(url) {
   }
 }
 
+// Script tiêm vào trang để lấy dữ liệu cho radar. Viết theo đúng các luật đã
+// trả giá với executeJavaScript: hàm tự gọi, KHÔNG arrow, KHÔNG 'use strict',
+// và trả về CHUỖI JSON — trả thẳng đối tượng lồng sâu của YouTube là có lúc
+// Electron không nhân bản được, lời gọi ném lỗi mà không nói vì sao.
+//
+// Trả về cả `idDom` (các link /watch?v= đang hiện trên trang) làm đường dự
+// phòng: nếu YouTube đổi cấu trúc ytInitialData thì vẫn còn danh sách mã video.
+function scriptDocTrang(loai) {
+  const l = loai === 'xem' ? 'xem' : (loai === 'trangChu' ? 'trangChu' : 'tim')
+  return `(function () {
+  var d = window.ytInitialData;
+  var loai = '${l}';
+  var khoi = null;
+  if (d) {
+    if (loai === 'xem') {
+      khoi = (d.contents && d.contents.twoColumnWatchNextResults &&
+              d.contents.twoColumnWatchNextResults.secondaryResults) || null;
+    } else {
+      khoi = d.contents || d;
+    }
+  }
+  var chon = loai === 'xem' ? '#secondary a[href*="/watch?v="]' : 'a#thumbnail[href*="/watch?v="], a[href*="/watch?v="]';
+  var cac = document.querySelectorAll(chon);
+  var idDom = [];
+  for (var i = 0; i < cac.length && idDom.length < 80; i++) {
+    var m = /[?&]v=([A-Za-z0-9_-]{11})/.exec(cac[i].getAttribute('href') || '');
+    if (m && idDom.indexOf(m[1]) < 0) idDom.push(m[1]);
+  }
+  return JSON.stringify({ coDuLieu: !!d, url: location.href, khoi: khoi, idDom: idDom });
+})()`
+}
+
 function taoQuanLy({ electron, cuaSo, nhatKy = { tin() {}, loi() {} }, baoSuKien = () => {} }) {
-  const { WebContentsView, session } = electron
+  const { WebContentsView, session, BrowserWindow } = electron
 
   // Mọi trạng thái nằm trong hai bảng này, khoá theo id — không có biến rời rạc.
   const tab = new Map()          // tabId -> { view, taiKhoanId, url, tieuDe }
@@ -179,6 +211,67 @@ function taoQuanLy({ electron, cuaSo, nhatKy = { tin() {}, loi() {} }, baoSuKien
     return [...c1, ...c2]
   }
 
+  // Trình đọc ẨN cho Radar đề xuất: một cửa sổ không hiện, dùng ĐÚNG phiên
+  // của tài khoản đã chọn (đề xuất của YouTube phụ thuộc lịch sử xem của tài
+  // khoản đó). Không chọn tài khoản thì dùng phiên khách riêng — không bao giờ
+  // mượn phiên của tài khoản khác.
+  //
+  // Tắt tiếng: mở trang xem là video tự phát, không tắt thì loa máy người
+  // dùng tự nhiên kêu mà không thấy cửa sổ nào.
+  function taoTrinhDoc(taiKhoanId) {
+    const phien = phienCuaTaiKhoan(taiKhoanId || 'khach-radar')
+    const win = new BrowserWindow({
+      show: false,
+      width: 1366,
+      height: 900,
+      webPreferences: {
+        session: phien,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false
+      }
+    })
+    const wc = win.webContents
+    wc.setAudioMuted(true)
+    wc.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+    // Đọc một trang. kiemDu(ketQua) → true khi dữ liệu đã đủ dùng; chưa đủ thì
+    // đợi thêm (cột đề xuất có lúc vẽ chậm hơn phần còn lại của trang).
+    async function doc(url, { loai = 'tim', kiemDu = () => true, thoiCho = 25000 } = {}) {
+      if (win.isDestroyed()) throw new Error('Trình đọc đã đóng')
+      const hanChot = Date.now() + thoiCho
+      try {
+        await Promise.race([
+          wc.loadURL(url),
+          new Promise((_, loi) => setTimeout(() => loi(new Error('quá thời gian tải trang')), thoiCho))
+        ])
+      } catch (e) {
+        // loadURL ném ERR_ABORTED khi YouTube tự chuyển hướng trong trang —
+        // không phải lỗi thật, trang vẫn đọc được. Lỗi khác thì báo lên.
+        if (!/ERR_ABORTED|\(-3\)/.test(String(e.message))) throw e
+      }
+      let cuoi = null
+      while (Date.now() < hanChot) {
+        try {
+          const chu = await wc.executeJavaScript(scriptDocTrang(loai))
+          cuoi = JSON.parse(chu)
+          if (cuoi.coDuLieu && kiemDu(cuoi)) return cuoi
+        } catch (e) {
+          nhatKy.canhBao(`Radar: đọc trang chưa được (${e.message}), thử lại…`)
+        }
+        await new Promise((r) => setTimeout(r, 800))
+      }
+      return cuoi || { coDuLieu: false, url: wc.getURL(), khoi: null, idDom: [] }
+    }
+
+    function dong() {
+      try { if (!win.isDestroyed()) win.destroy() } catch (_) {}
+    }
+
+    return { doc, dong }
+  }
+
   async function xoaPhien(taiKhoanId) {
     dongTheoTaiKhoan(taiKhoanId)
     const phien = phienCuaTaiKhoan(taiKhoanId)
@@ -196,6 +289,7 @@ function taoQuanLy({ electron, cuaSo, nhatKy = { tin() {}, loi() {} }, baoSuKien
     hien,
     layCookie,
     xoaPhien,
+    taoTrinhDoc,
     soTab: () => tab.size,
     dangHienKhong: () => dangHien,
     trangThai: () => ({
@@ -208,4 +302,4 @@ function taoQuanLy({ electron, cuaSo, nhatKy = { tin() {}, loi() {} }, baoSuKien
   }
 }
 
-module.exports = { tenPhanVung, taoIdTaiKhoan, duocPhepMo, taoQuanLy }
+module.exports = { tenPhanVung, taoIdTaiKhoan, duocPhepMo, taoQuanLy, scriptDocTrang }

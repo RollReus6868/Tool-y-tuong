@@ -86,13 +86,15 @@ async function timYTuong({
   for (const d of dong) {
     const k = bangKenh.get(d.kenhId)
     d.subKenh = k ? k.subKenh : 0
+    d.quocGia = k ? k.quocGia : ''
+    d.anSub = k ? k.anSub : false
   }
 
   // Lọc TRƯỚC khi tính trung vị kênh: bỏ Shorts và video không đạt tiêu chí
   // ngay tại đây thì khỏi tốn 2 đơn vị quota cho những kênh sẽ bị loại.
   const truocLoc = dong.length
   dong = locVideo(dong, caiDat)
-  nhatKy.tin(`Lọc: ${truocLoc} → ${dong.length} video (bỏ Shorts, dưới ngưỡng view/thời lượng)`)
+  nhatKy.tin(`Lọc: ${truocLoc} → ${dong.length} video (bỏ Shorts, không phải tiếng Anh, dưới ngưỡng view/thời lượng)`)
 
   // --- Trung vị kênh: chỉ số đáng tin nhất -------------------------------
   if (caiDat.tinhVuotTrungViKenh) {
@@ -123,7 +125,7 @@ async function timYTuong({
   }
 
   tien('Chấm điểm', `${dong.length} video`)
-  const daCham = chamDiem(dong)
+  const daCham = chamDiem(dong, { caiDat })
 
   baoTienDo({ phanTram: 100, viec: 'Xong', chiTiet: `${daCham.length} video`, daXong: tongBuoc, tong: tongBuoc })
 

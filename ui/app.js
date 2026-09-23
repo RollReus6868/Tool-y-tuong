@@ -24,6 +24,13 @@ let promptThangHienTai = {}
 let cacPromptHienTai = []
 let baoCaoHienTai = null
 
+let videoDaChon = []          // danh sách "Video đã chọn" — lưu ở tiến trình chính
+let bangRadar = []
+let locRadar = 'tat-ca'
+let bangHot = []
+let locHot = 'tat-ca'
+const boTickTaiMan = {}       // màn sản xuất → Set mã video anh BỎ tick trong khối Video đã chọn
+
 // ---------------------------------------------------------------------------
 // Hộp thoại tự dựng — Electron không có window.prompt/confirm dùng được.
 // ---------------------------------------------------------------------------
@@ -145,6 +152,16 @@ async function taiCaiDat() {
     const gt = caiDatHienTai[khoa]
     if (o.type === 'checkbox') o.checked = !!gt
     else o.value = gt ?? ''
+  }
+
+  // Ô điều khiển của Radar lấy MẶC ĐỊNH từ Cài đặt. Thiếu bước này thì ô
+  // "video đăng trong" hiện lựa chọn đầu tiên (1 tuần) dù cài đặt là 1 tháng —
+  // người dùng tưởng đã chạy theo cài đặt mà thật ra không.
+  if (!taiCaiDat.daDatRadar) {
+    taiCaiDat.daDatRadar = true
+    $('#o-so-hat-giong').value = caiDatHienTai.soVideoHatGiong || 8
+    $('#o-radar-thoi-gian').value = caiDatHienTai.radarThoiGian || 'thang'
+    $('#o-radar-trang-chu').checked = caiDatHienTai.radarDocTrangChu !== false
   }
 
   veDanhSachKhoa(g.quota)
@@ -369,7 +386,7 @@ $('#nut-tim').onclick = async () => {
     }
     ketQua = kq.dong
     locHienTai = 'tat-ca'
-    $$('.loc-nhanh .chip:not(.chip-kenh)').forEach((c) => c.classList.toggle('chip-chon', c.dataset.loc === 'tat-ca'))
+    $$('#man-y-tuong .loc-nhanh .chip').forEach((c) => c.classList.toggle('chip-chon', c.dataset.loc === 'tat-ca'))
     veBang()
     $('#the-ket-qua').hidden = false
     $('#tom-tat-ket-qua').textContent =
@@ -417,51 +434,24 @@ function soGioTruoc(ngay) {
   return gio < 48 ? `${gio} giờ` : `${Math.round(gio / 24)} ngày`
 }
 
+function locDongYTuong() {
+  if (locHienTai === 'tat-ca') return ketQua
+  if (locHienTai === 'TỐT') return ketQua.filter((d) => d.nhan === 'TỐT' || d.nhan === 'NỔ VIEW')
+  if (locHienTai === 'VUA-NHO') return ketQua.filter((d) => d.coKenh === 'vuaNho')
+  return ketQua.filter((d) => d.nhan === locHienTai)
+}
+
 function veBang() {
-  const dong = locHienTai === 'tat-ca'
-    ? ketQua
-    : (locHienTai === 'TỐT'
-        ? ketQua.filter((d) => d.nhan === 'TỐT' || d.nhan === 'NỔ VIEW')
-        : ketQua.filter((d) => d.nhan === locHienTai))
-
-  const bang = $('#bang-ket-qua')
-  bang.innerHTML = `
-    <thead><tr>
-      <th>Nhãn</th><th>Điểm</th><th>Tiêu đề</th><th>Kênh</th>
-      <th>View</th><th>View/giờ</th><th>V/Sub</th><th>Vượt TV kênh</th>
-      <th>Sub</th><th>Dài</th><th>Đăng</th><th>Từ khóa</th>
-    </tr></thead>`
-  const than = document.createElement('tbody')
-
-  if (!dong.length) {
-    than.innerHTML = '<tr><td colspan="12" class="ghi-chu" style="padding:18px">Không có dòng nào khớp bộ lọc.</td></tr>'
-  }
-
-  for (const d of dong) {
-    const tr = document.createElement('tr')
-    tr.innerHTML = `
-      <td><span class="nhan-video ${LOP_NHAN[d.nhan] || 'nhan-thuong'}">${thoat(d.nhan)}</span></td>
-      <td class="so-lieu">${d.diem}</td>
-      <td class="tieu-de"><a href="#" data-ngoai="${thoat(d.lienKet)}">${thoat(d.tieuDe)}</a></td>
-      <td>${thoat(d.tenKenh)}</td>
-      <td class="so-lieu">${soGon(d.views)}</td>
-      <td class="so-lieu">${soGon(d.vph)}</td>
-      <td class="so-lieu ${d.tyLeSub >= 1 ? 'manh' : ''}">${d.tyLeSub || '—'}</td>
-      <td class="so-lieu ${d.vuotTrungVi >= 3 ? 'manh' : ''}">${d.vuotTrungVi ? d.vuotTrungVi + '×' : '—'}</td>
-      <td class="so-lieu">${soGon(d.subKenh)}</td>
-      <td class="so-lieu">${phutGiay(d.thoiLuongGiay)}</td>
-      <td class="so-lieu">${soGioTruoc(d.ngayDang)}</td>
-      <td class="ghi-chu">${thoat((d.tuKhoaNguon || []).join(', '))}</td>`
-    than.append(tr)
-  }
-  bang.append(than)
+  veBangVideo($('#bang-ket-qua'), locDongYTuong(),
+    ['tick', 'thumb', 'nhan', 'diem', 'tieuDe', 'kenh', 'views', 'vph', 'tyLeSub', 'vuotTV', 'sub', 'dai', 'dang'],
+    { nguon: 'Ý tưởng' })
 }
 
 $$('.loc-nhanh .chip').forEach((c) => {
-  if (c.classList.contains('chip-kenh')) return
+  if (c.classList.contains('chip-kenh') || c.classList.contains('chip-radar') || c.classList.contains('chip-hot')) return
   c.onclick = () => {
     locHienTai = c.dataset.loc
-    $$('.loc-nhanh .chip:not(.chip-kenh)').forEach((x) => x.classList.toggle('chip-chon', x === c))
+    $$('#man-y-tuong .loc-nhanh .chip').forEach((x) => x.classList.toggle('chip-chon', x === c))
     veBang()
   }
 })
@@ -571,33 +561,9 @@ function veBangKenh() {
   const dong = locKenh === 'tat-ca'
     ? bangKenhHienTai
     : bangKenhHienTai.filter((d) => d.nhan === locKenh)
-
-  const bang = $('#bang-kenh')
-  bang.innerHTML = `<thead><tr>
-      <th>Nhãn</th><th>Vượt TV kênh</th><th>Tiêu đề</th><th>Kênh</th>
-      <th>View</th><th>Tăng từ lần quét trước</th><th>Dài</th><th>Đăng</th>
-    </tr></thead>`
-  const than = document.createElement('tbody')
-  if (!dong.length) {
-    than.innerHTML = '<tr><td colspan="8" class="ghi-chu" style="padding:18px">Chưa có dòng nào.</td></tr>'
-  }
-  for (const d of dong) {
-    const tt = d.tangTruong
-      ? `+${soGon(d.tangTruong.tang)} trong ${d.tangTruong.soGio}h (${soGon(d.tangTruong.tangMoiGio)}/giờ)`
-      : (d.soMocLichSu > 1 ? 'chưa đủ cách nhau 12h' : 'lần quét đầu')
-    const tr = document.createElement('tr')
-    tr.innerHTML = `
-      <td><span class="nhan-video ${LOP_NHAN[d.nhan] || 'nhan-thuong'}">${thoat(d.nhan)}</span></td>
-      <td class="so-lieu ${d.vuotTrungVi >= 3 ? 'manh' : ''}">${d.vuotTrungVi ? d.vuotTrungVi + '×' : '—'}</td>
-      <td class="tieu-de"><a href="#" data-ngoai="${thoat(d.lienKet)}">${thoat(d.tieuDe)}</a></td>
-      <td>${thoat(d.tenKenh)}</td>
-      <td class="so-lieu">${soGon(d.views)}</td>
-      <td class="ghi-chu">${thoat(tt)}</td>
-      <td class="so-lieu">${phutGiay(d.thoiLuongGiay)}</td>
-      <td class="so-lieu">${soGioTruoc(d.ngayDang)}</td>`
-    than.append(tr)
-  }
-  bang.append(than)
+  veBangVideo($('#bang-kenh'), dong,
+    ['tick', 'thumb', 'nhan', 'vuotTV', 'tieuDe', 'kenh', 'views', 'tang', 'dai', 'dang'],
+    { nguon: 'Kênh theo dõi', rong: 'Chưa có dòng nào.' })
 }
 
 // ---------------------------------------------------------------------------
@@ -766,8 +732,15 @@ $('#nut-them-skill').onclick = async () => {
 // Kịch bản
 // ---------------------------------------------------------------------------
 $('#nut-prompt-dan-y').onclick = async () => {
-  const kq = await window.api.promptDanY(duAnHienTai, $('#chon-skill').value, {})
+  const yeuCau = {}
+  const dung = $('#o-dung-video-tham-khao')
+  const ds = dsDangTick('kich-ban')
+  if (dung && dung.checked && ds.length) yeuCau.videoThamKhao = choPromptKichBan(ds)
+  const kq = await window.api.promptDanY(duAnHienTai, $('#chon-skill').value, yeuCau)
   await chepVaBao(kq.prompt, $('#ghi-chu-dan-y'))
+  if (yeuCau.videoThamKhao) {
+    $('#ghi-chu-dan-y').textContent += ` · kèm ${yeuCau.videoThamKhao.length} video tham khảo`
+  }
 }
 
 $('#nut-luu-dan-y').onclick = async () => {
@@ -879,7 +852,8 @@ $('#nut-mo-tep').onclick = async () => {
 $('#nut-kiem-duyet').onclick = async () => {
   const chu = $('#o-kiem-duyet').value.trim()
   if (!chu && !duAnHienTai) { await baoTin('Chưa có kịch bản để kiểm.'); return }
-  const kq = await window.api.kiemDuyet(chu, null, duAnHienTai)
+  const banGoc = $('#o-ban-goc').value.trim()
+  const kq = await window.api.kiemDuyet(chu, banGoc || null, duAnHienTai)
   if (!kq.ok) { await baoTin(kq.loi); return }
   baoCaoHienTai = kq.baoCao
   veBaoCao(kq.baoCao, kq.coBanGoc)
@@ -1211,6 +1185,14 @@ function veTaiKhoan() {
     hop.append(dong)
   }
 
+  const selRadar = $('#chon-tai-khoan-radar')
+  if (selRadar) {
+    const cuRadar = selRadar.value
+    selRadar.innerHTML = '<option value="">— không đăng nhập —</option>' +
+      ds.map((t) => `<option value="${thoat(t.id)}">${thoat(t.ten)}</option>`).join('')
+    selRadar.value = ds.some((t) => t.id === cuRadar) ? cuRadar : (ds[0] ? ds[0].id : '')
+  }
+
   const sel = $('#chon-tai-khoan-cookie')
   const cu = sel.value
   sel.innerHTML = '<option value="">— không dùng cookie —</option>' +
@@ -1472,6 +1454,655 @@ window.api.nhanCapNhat((d) => {
 })
 
 // ---------------------------------------------------------------------------
+// VIDEO ĐÃ CHỌN — sợi dây nối phần Nghiên cứu với phần Sản xuất
+//
+// Tick ô đầu dòng ở bất kỳ bảng nào (Ý tưởng, Đề xuất, Kênh theo dõi) = đưa
+// video vào danh sách. Danh sách lưu ở tiến trình chính (tệp riêng), nên tắt
+// app mở lại vẫn còn. Cả 4 màn Sản xuất đều có khối "Video đã chọn".
+// ---------------------------------------------------------------------------
+function daChon(videoId) {
+  return videoDaChon.some((v) => v.videoId === videoId)
+}
+
+async function taiVideoDaChon() {
+  videoDaChon = await window.api.docVideoDaChon()
+  capNhatMoiChoDaChon()
+}
+
+// co = true: thêm; false: bỏ. nguon: tên màn đã chọn video này.
+async function datChon(cacVideo, co, nguon = '') {
+  let ds = [...videoDaChon]
+  if (co) {
+    for (const v of cacVideo) {
+      if (ds.some((x) => x.videoId === v.videoId)) continue
+      // Dòng radar có trường `nguon` là MẢNG các hạt giống — ghi đè bằng tên màn,
+      // nếu không danh sách đã chọn sẽ hiện nguồn là một chuỗi mã video vô nghĩa.
+      ds.push({ ...v, nguon, nhan: v.nhanDeXuat || v.nhan || '', views: v.views || v.viewUoc || 0 })
+    }
+  } else {
+    const bo = new Set(cacVideo.map((v) => v.videoId))
+    ds = ds.filter((v) => !bo.has(v.videoId))
+  }
+  videoDaChon = await window.api.ghiVideoDaChon(ds)
+  capNhatMoiChoDaChon()
+}
+
+function capNhatMoiChoDaChon() {
+  $('#so-da-chon').textContent = `${videoDaChon.length} video`
+  $('#hop-da-chon').classList.toggle('co-chon', videoDaChon.length > 0)
+
+  // Cập nhật ô tick ở mọi bảng đang hiện — không vẽ lại cả bảng để khỏi mất
+  // vị trí cuộn.
+  for (const o of $$('.tick-video')) {
+    o.checked = daChon(o.dataset.id)
+    const tr = o.closest('tr')
+    if (tr) tr.classList.toggle('dong-da-chon', o.checked)
+  }
+  for (const o of $$('.tick-tat-ca')) {
+    const bang = o.closest('table')
+    const cac = bang ? [...bang.querySelectorAll('.tick-video')] : []
+    const soTick = cac.filter((x) => x.checked).length
+    o.checked = cac.length > 0 && soTick === cac.length
+    o.indeterminate = soTick > 0 && soTick < cac.length
+  }
+  for (const hop of $$('.hop-video-chon')) veHopVideoChon(hop)
+}
+
+// ---------------------------------------------------------------------------
+// Bảng video dùng chung cho Ý tưởng, Kênh theo dõi, Radar, Đang hot
+// ---------------------------------------------------------------------------
+const LOP_DE_XUAT = { 'ĐẨY MẠNH': 'nhan-day-manh', 'MẠNH': 'nhan-tot', 'CÓ ĐỀ XUẤT': 'nhan-thuong' }
+
+function anhNho(d) {
+  return d.thumbnailNho || `https://i.ytimg.com/vi/${d.videoId}/mqdefault.jpg`
+}
+
+function huyHieu(d) {
+  const h = []
+  if (d.coKenh === 'vuaNho') h.push('<span class="huy-hieu huy-hieu-ngoc">kênh vừa &amp; nhỏ</span>')
+  if (d.khopLinhVuc) h.push('<span class="huy-hieu huy-hieu-cam">khớp lĩnh vực</span>')
+  if (d.laHatGiong) h.push('<span class="huy-hieu">hạt giống</span>')
+  if (d.trenTrangChu) h.push('<span class="huy-hieu huy-hieu-tim">trang chủ</span>')
+  if (d.quocGia && d.quocGia !== 'US') h.push(`<span class="huy-hieu huy-hieu-vang">kênh ${thoat(d.quocGia)}</span>`)
+  if (d.coSoLieuApi === false) h.push('<span class="huy-hieu" title="Chưa ghép số liệu API — view là số ước đọc từ trang">số ước</span>')
+  return h.length ? `<div class="hang-huy-hieu">${h.join('')}</div>` : ''
+}
+
+const COT_VIDEO = {
+  tick: {
+    dau: '<input type="checkbox" class="tick-tat-ca" title="Tick / bỏ tick mọi dòng đang hiện">',
+    lop: 'o-tick',
+    o: (d) => `<input type="checkbox" class="tick-video" data-id="${thoat(d.videoId)}"${daChon(d.videoId) ? ' checked' : ''}>`
+  },
+  thumb: {
+    dau: 'Ảnh',
+    lop: 'o-thumb-cot',
+    o: (d) => `<div class="o-thumb"><img loading="lazy" src="${thoat(anhNho(d))}" alt="" data-mo-app="${thoat(d.lienKet)}" title="Mở trong trình duyệt của tool">` +
+      `<button class="nut-tai-mot" data-tai-thumb="${thoat(d.videoId)}" title="Tải thumbnail cỡ lớn nhất có được">⬇</button></div>`
+  },
+  nhan: { dau: 'Nhãn', o: (d) => `<span class="nhan-video ${LOP_NHAN[d.nhan] || 'nhan-thuong'}">${thoat(d.nhan || '—')}</span>` },
+  deXuat: {
+    dau: 'Đề xuất',
+    o: (d) => `<span class="nhan-video ${LOP_DE_XUAT[d.nhanDeXuat] || 'nhan-thuong'}">${thoat(d.nhanDeXuat || '—')}</span>` +
+      `<div class="ghi-chu so-nguon">${d.soNguon}/${d.tongNguon} nguồn</div>`
+  },
+  diem: { dau: 'Điểm', lop: 'so-lieu', o: (d) => (d.diem != null ? d.diem : '—') },
+  tieuDe: {
+    dau: 'Tiêu đề',
+    lop: 'tieu-de',
+    o: (d) => `<a href="#" data-ngoai="${thoat(d.lienKet)}">${thoat(d.tieuDe || d.videoId)}</a>${huyHieu(d)}` +
+      ((d.tuKhoaNguon || []).length ? `<div class="tu-khoa-nguon">từ khóa: ${thoat(d.tuKhoaNguon.join(', '))}</div>` : '')
+  },
+  kenh: { dau: 'Kênh', lop: 'o-kenh', o: (d) => thoat(d.tenKenh || '—') },
+  views: { dau: 'View', lop: 'so-lieu', o: (d) => soGon(d.views || d.viewUoc || 0) },
+  vph: { dau: 'View/giờ', lop: 'so-lieu', o: (d) => (d.vph ? soGon(d.vph) : '—') },
+  tyLeSub: { dau: 'V/Sub', lop: 'so-lieu', o: (d) => `<span class="${d.tyLeSub >= 1 ? 'manh' : ''}">${d.tyLeSub || '—'}</span>` },
+  vuotTV: { dau: '<span title="Vượt trung vị view 20 video gần nhất của chính kênh đó">Vượt TV</span>', lop: 'so-lieu', o: (d) => `<span class="${d.vuotTrungVi >= 3 ? 'manh' : ''}">${d.vuotTrungVi ? d.vuotTrungVi + '×' : '—'}</span>` },
+  sub: {
+    dau: 'Sub',
+    lop: 'so-lieu',
+    o: (d) => `<span class="${d.coKenh === 'vuaNho' ? 'sub-vua-nho' : ''}">${d.anSub ? 'ẩn' : (d.subKenh ? soGon(d.subKenh) : '—')}</span>`
+  },
+  dai: { dau: 'Dài', lop: 'so-lieu', o: (d) => phutGiay(d.thoiLuongGiay) },
+  dang: { dau: 'Đăng', lop: 'so-lieu', o: (d) => (d.ngayDang ? soGioTruoc(d.ngayDang) : thoat(d.ngayChu || '—')) },
+  tuKhoa: { dau: 'Từ khóa', lop: 'ghi-chu', o: (d) => thoat((d.tuKhoaNguon || []).join(', ')) },
+  tang: {
+    dau: 'Tăng từ lần quét trước',
+    lop: 'ghi-chu',
+    o: (d) => thoat(d.tangTruong
+      ? `+${soGon(d.tangTruong.tang)} trong ${d.tangTruong.soGio}h (${soGon(d.tangTruong.tangMoiGio)}/giờ)`
+      : (d.soMocLichSu > 1 ? 'chưa đủ cách nhau 12h' : 'lần quét đầu'))
+  }
+}
+
+function veBangVideo(bang, dong, cacCot, { nguon = '', rong = 'Không có dòng nào khớp bộ lọc.' } = {}) {
+  bang._dong = dong
+  bang._nguon = nguon
+  const cot = cacCot.map((k) => COT_VIDEO[k])
+  bang.innerHTML = `<thead><tr>${cot.map((c) => `<th class="${c.lop || ''}">${c.dau}</th>`).join('')}</tr></thead>`
+  const than = document.createElement('tbody')
+  if (!dong.length) {
+    than.innerHTML = `<tr><td colspan="${cot.length}" class="ghi-chu" style="padding:18px">${thoat(rong)}</td></tr>`
+  }
+  for (const d of dong) {
+    const tr = document.createElement('tr')
+    if (daChon(d.videoId)) tr.classList.add('dong-da-chon')
+    tr.innerHTML = cot.map((c) => `<td class="${c.lop || ''}">${c.o(d)}</td>`).join('')
+    than.append(tr)
+  }
+  bang.append(than)
+
+  // Gắn sự kiện MỘT lần cho mỗi bảng (uỷ quyền) — vẽ lại bảng không gắn chồng.
+  if (!bang.dataset.daGan) {
+    bang.dataset.daGan = '1'
+    bang.addEventListener('change', async (su) => {
+      const o = su.target
+      if (o.classList.contains('tick-video')) {
+        const v = (bang._dong || []).find((x) => x.videoId === o.dataset.id)
+        if (v) await datChon([v], o.checked, bang._nguon)
+      } else if (o.classList.contains('tick-tat-ca')) {
+        await datChon(bang._dong || [], o.checked, bang._nguon)
+      }
+    })
+    bang.addEventListener('click', async (su) => {
+      const anh = su.target.closest('[data-mo-app]')
+      if (anh) { su.preventDefault(); await moTrongApp(anh.dataset.moApp); return }
+      const tai = su.target.closest('[data-tai-thumb]')
+      if (tai) {
+        su.preventDefault()
+        const v = (bang._dong || []).find((x) => x.videoId === tai.dataset.taiThumb)
+        if (v) await taiThumb([v])
+      }
+    })
+  }
+  capNhatMoiChoDaChon()
+}
+
+async function moTrongApp(url) {
+  const kq = await window.api.moNhanhTrongApp(url)
+  if (!kq.ok) { await baoTin('Chỉ mở được các trang YouTube, Google và Claude trong trình duyệt của tool.'); return }
+  moMan('trinh-duyet')
+}
+
+// Tải thumbnail. duAnMa có thì lưu vào thư mục ảnh tham chiếu của dự án.
+async function taiThumb(ds, duAnMa = null) {
+  if (!ds.length) { await baoTin('Chưa có video nào để tải thumbnail.'); return }
+  const kq = await window.api.taiThumbnail(ds, duAnMa)
+  if (kq.huy) return
+  if (!kq.ok) {
+    await baoTin((kq.loi && kq.loi.length ? `Không tải được thumbnail nào. ${kq.loi[0].loi}` : (kq.loi || 'Không tải được.')) +
+      ' Xem màn Nhật ký để biết chi tiết.')
+    return
+  }
+  const loi = (kq.loi || []).length ? `\n${kq.loi.length} video không tải được — xem màn Nhật ký.` : ''
+  if (await hoiCo(`Đã tải ${kq.soTai}/${ds.length} thumbnail vào:\n${kq.thuMuc}${loi}`, 'Mở thư mục')) {
+    await window.api.moThuMuc(kq.thuMuc)
+  }
+}
+
+// Nút "Tải thumbnail video đã tick" của một bảng: lấy các dòng đang tick trong
+// bảng đó; chưa tick dòng nào thì hỏi có tải hết các dòng đang hiện không.
+async function taiThumbCuaBang(bang) {
+  const dong = bang._dong || []
+  if (!dong.length) { await baoTin('Bảng chưa có video nào.'); return }
+  const daTick = dong.filter((d) => daChon(d.videoId))
+  if (daTick.length) { await taiThumb(daTick); return }
+  if (await hoiCo(`Chưa tick video nào trong bảng này. Tải thumbnail cho cả ${dong.length} video đang hiện?`, 'Tải hết')) {
+    await taiThumb(dong)
+  }
+}
+$('#nut-tai-thumb-y-tuong').onclick = () => taiThumbCuaBang($('#bang-ket-qua'))
+
+// ---------------------------------------------------------------------------
+// Khối "Video đã chọn" ở 4 màn Sản xuất
+// ---------------------------------------------------------------------------
+function dsDangTick(man) {
+  const bo = boTickTaiMan[man] || new Set()
+  return videoDaChon.filter((v) => !bo.has(v.videoId))
+}
+
+function choPromptKichBan(ds) {
+  return ds.map((v) => ({
+    tieuDe: v.tieuDe,
+    tenKenh: v.tenKenh,
+    views: v.views,
+    subKenh: v.subKenh,
+    phut: v.thoiLuongGiay ? Math.round(v.thoiLuongGiay / 60) : 0,
+    lienKet: v.lienKet
+  }))
+}
+
+function linkCua(ds) {
+  return ds.map((v) => `https://www.youtube.com/watch?v=${v.videoId}`).join('\n')
+}
+
+const HANH_DONG_MAN = {
+  'loi-thoai': {
+    gioiThieu: 'Lấy lời thoại các video anh đã tick. Nên gộp 2–4 video vào một dự án.',
+    nut: [
+      {
+        ten: 'Nạp link vào ô bên dưới', lop: 'nut-phu',
+        lam: async (ds) => {
+          $('#nhap-link-video').value = linkCua(ds)
+          $('#nhap-link-video').scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      },
+      {
+        ten: 'Lấy lời thoại ngay', lop: 'nut-chinh',
+        lam: async (ds) => {
+          $('#nhap-link-video').value = linkCua(ds)
+          $('#nut-lay-loi-thoai').click()
+        }
+      }
+    ]
+  },
+  'kich-ban': {
+    gioiThieu: 'Video đã tick đi vào prompt dàn ý như TÍN HIỆU THỊ TRƯỜNG (người xem Mỹ đang quan tâm góc nào) — prompt dặn rõ không chép tiêu đề, không bám cấu trúc.',
+    tuyChon: '<label class="o-danh-dau"><input type="checkbox" id="o-dung-video-tham-khao" checked> Đưa các video đang tick vào prompt dàn ý (làm video tham khảo)</label>',
+    nut: [
+      {
+        ten: 'Lấy lời thoại các video này vào dự án', lop: 'nut-phu',
+        lam: async (ds) => {
+          if (!duAnHienTai) { await baoTin('Chọn (hoặc tạo) dự án ở màn Lời thoại trước.'); return }
+          $('#nhap-link-video').value = linkCua(ds)
+          moMan('loi-thoai')
+          $('#nut-lay-loi-thoai').click()
+        }
+      }
+    ]
+  },
+  'kiem-duyet': {
+    gioiThieu: 'Đo kịch bản của anh giống video gốc tới đâu — lấy lời thoại các video đã tick làm bản so.',
+    nut: [
+      {
+        ten: 'Lấy lời thoại làm bản gốc để so', lop: 'nut-chinh',
+        lam: async (ds) => {
+          const lay = ds.slice(0, 4)
+          if (ds.length > 4 && !(await hoiCo(`Đang tick ${ds.length} video — chỉ lấy 4 video đầu cho nhanh. Tiếp tục?`, 'Lấy 4 video'))) return
+          const phan = []
+          const loi = []
+          for (let i = 0; i < lay.length; i++) {
+            datTienDo({ phanTram: Math.round((i / lay.length) * 100), viec: 'Lấy lời thoại bản gốc', chiTiet: `${i + 1}/${lay.length} · ${lay[i].tieuDe}` })
+            const kq = await window.api.layLoiThoaiMotVideo(lay[i].videoId, $('#chon-tai-khoan-cookie').value)
+            if (kq.ok) phan.push(`## ${kq.tieuDe || lay[i].tieuDe}\n\n${kq.vanBan}`)
+            else loi.push(`${lay[i].tieuDe}: ${kq.loi}`)
+          }
+          datTienDo({ phanTram: 100, viec: 'Lấy bản gốc xong', chiTiet: `${phan.length}/${lay.length} video`, soLoi: loi.length, trangThai: loi.length ? 'loi' : 'xong' })
+          if (phan.length) {
+            $('#o-ban-goc').value = phan.join('\n\n---\n\n')
+            $('#chi-tiet-ban-goc').open = true
+            capNhatTomTatBanGoc()
+          }
+          if (loi.length) await baoTin('Một số video không lấy được lời thoại:\n' + loi.join('\n'))
+        }
+      }
+    ]
+  },
+  'prompt-anh': {
+    gioiThieu: 'Thumbnail của video đang chạy tốt là tham chiếu phong cách hình ảnh (màu, bố cục, ánh sáng) — tải về để đưa cho Claude hoặc tự xem khi viết template.',
+    nut: [
+      {
+        ten: 'Tải thumbnail làm ảnh tham chiếu', lop: 'nut-chinh',
+        lam: async (ds) => taiThumb(ds, duAnHienTai || null)
+      }
+    ]
+  }
+}
+
+function veHopVideoChon(hop) {
+  const man = hop.dataset.man
+  const cauHinh = HANH_DONG_MAN[man]
+  if (!cauHinh) return
+  // Giữ trạng thái ô tuỳ chọn khi vẽ lại.
+  const tuyChonCu = hop.querySelector('input[id]')
+  const daBat = tuyChonCu ? tuyChonCu.checked : true
+
+  if (!videoDaChon.length) {
+    hop.classList.add('hop-trong')
+    hop.innerHTML = `
+      <div class="hang-dau-bang">
+        <label class="nhan">Video đã chọn <span class="dem-chon">0</span></label>
+        <div class="hang-nut">
+          <button class="nut nut-phu" data-sang="y-tuong">Sang màn Ý tưởng</button>
+          <button class="nut nut-phu" data-sang="de-xuat">Sang Đề xuất video</button>
+        </div>
+      </div>
+      <p class="ghi-chu">Chưa chọn video nào. Tick ô ☐ đầu mỗi dòng ở màn <b>Ý tưởng</b>, <b>Đề xuất video</b> hoặc
+        <b>Kênh theo dõi</b> — video sẽ hiện ở đây để dùng cho màn này.</p>`
+    for (const b of hop.querySelectorAll('[data-sang]')) b.onclick = () => moMan(b.dataset.sang)
+    return
+  }
+
+  hop.classList.remove('hop-trong')
+  const bo = boTickTaiMan[man] || (boTickTaiMan[man] = new Set())
+  for (const id of [...bo]) if (!daChon(id)) bo.delete(id)
+  const soTick = videoDaChon.length - bo.size
+
+  hop.innerHTML = `
+    <div class="hang-dau-bang">
+      <label class="nhan">Video đã chọn <span class="dem-chon">${videoDaChon.length}</span>
+        <span class="the-nho">đang tick ${soTick}/${videoDaChon.length} cho màn này</span></label>
+      <div class="hang-nut">
+        <button class="nut nut-phu nut-nho" data-lam="tick-het">Tick hết</button>
+        <button class="nut nut-phu nut-nho" data-lam="bo-tick">Bỏ tick hết</button>
+        <button class="nut nut-do" data-lam="xoa-het">Xoá cả danh sách</button>
+      </div>
+    </div>
+    <p class="ghi-chu">${cauHinh.gioiThieu}</p>
+    ${cauHinh.tuyChon || ''}
+    <div class="luoi-video-chon"></div>
+    <div class="hang-nut hang-hanh-dong"></div>`
+
+  const tc = hop.querySelector('input[id]')
+  if (tc) tc.checked = daBat
+
+  const luoi = hop.querySelector('.luoi-video-chon')
+  for (const v of videoDaChon) {
+    const the = document.createElement('div')
+    the.className = 'the-video-chon' + (bo.has(v.videoId) ? ' bo-tick' : '')
+    the.innerHTML = `
+      <label class="tick-goc"><input type="checkbox"${bo.has(v.videoId) ? '' : ' checked'}></label>
+      <button class="xoa-chon" title="Gỡ khỏi danh sách đã chọn">×</button>
+      <img loading="lazy" src="${thoat(anhNho(v))}" alt="" title="Mở trong trình duyệt của tool">
+      <div class="tieu-de-chon" title="${thoat(v.tieuDe)}">${thoat(v.tieuDe || v.videoId)}</div>
+      <div class="ghi-chu">${thoat(v.tenKenh || '—')} · ${soGon(v.views)} view${v.subKenh ? ' · ' + soGon(v.subKenh) + ' sub' : ''}${v.thoiLuongGiay ? ' · ' + phutGiay(v.thoiLuongGiay) : ''}</div>
+      ${v.nguon ? `<div class="nguon-chon">từ ${thoat(v.nguon)}</div>` : ''}`
+    the.querySelector('input').onchange = (su) => {
+      if (su.target.checked) bo.delete(v.videoId)
+      else bo.add(v.videoId)
+      veHopVideoChon(hop)
+    }
+    the.querySelector('.xoa-chon').onclick = () => datChon([v], false)
+    the.querySelector('img').onclick = () => moTrongApp(v.lienKet)
+    luoi.append(the)
+  }
+
+  hop.querySelector('[data-lam="tick-het"]').onclick = () => { bo.clear(); veHopVideoChon(hop) }
+  hop.querySelector('[data-lam="bo-tick"]').onclick = () => { for (const v of videoDaChon) bo.add(v.videoId); veHopVideoChon(hop) }
+  hop.querySelector('[data-lam="xoa-het"]').onclick = async () => {
+    if (!(await hoiCo(`Xoá cả ${videoDaChon.length} video khỏi danh sách đã chọn? (Chỉ xoá khỏi danh sách, không xoá gì trên máy.)`, 'Xoá hết'))) return
+    await datChon(videoDaChon, false)
+  }
+
+  const hang = hop.querySelector('.hang-hanh-dong')
+  for (const n of cauHinh.nut) {
+    const b = document.createElement('button')
+    b.className = `nut ${n.lop}`
+    b.textContent = `${n.ten} (${soTick})`
+    b.disabled = soTick === 0
+    b.onclick = async () => {
+      b.disabled = true
+      try { await n.lam(dsDangTick(man)) } finally { b.disabled = false }
+    }
+    hang.append(b)
+  }
+}
+
+function capNhatTomTatBanGoc() {
+  const chu = $('#o-ban-goc').value.trim()
+  const soTu = (chu.match(/\S+/g) || []).length
+  $('#tom-tat-ban-goc').textContent = soTu
+    ? `đang dùng bản gốc dán tay · ${soTu.toLocaleString('vi-VN')} từ`
+    : 'đang dùng lời thoại của dự án'
+}
+$('#o-ban-goc').addEventListener('input', capNhatTomTatBanGoc)
+
+// ---------------------------------------------------------------------------
+// ĐỀ XUẤT VIDEO
+// ---------------------------------------------------------------------------
+$$('.tab-de-xuat').forEach((t) => {
+  t.onclick = () => {
+    $$('.tab-de-xuat').forEach((x) => x.classList.toggle('tab-de-xuat-chon', x === t))
+    $('#khoi-radar').hidden = t.dataset.tab !== 'radar'
+    $('#khoi-hot').hidden = t.dataset.tab !== 'hot'
+    if (t.dataset.tab === 'hot') capNhatUoc72h()
+  }
+})
+
+function linhVuc() {
+  let chu = $('#nhap-linh-vuc').value.trim()
+  // Chưa nhập thì mượn luôn từ khóa ở màn Ý tưởng — đỡ gõ lại hai lần.
+  if (!chu && $('#nhap-tu-khoa').value.trim()) {
+    chu = $('#nhap-tu-khoa').value.trim()
+    $('#nhap-linh-vuc').value = chu
+  }
+  return chu
+}
+
+function tachLinhVuc(chu) {
+  return [...new Set(String(chu || '').split(/[,;\n]+/).map((x) => x.trim().toLowerCase().replace(/\s+/g, ' ')).filter(Boolean))]
+}
+
+function locDongRadar() {
+  if (locRadar === 'ĐẨY MẠNH') return bangRadar.filter((d) => d.nhanDeXuat === 'ĐẨY MẠNH')
+  if (locRadar === 'KHOP') return bangRadar.filter((d) => d.khopLinhVuc)
+  if (locRadar === 'VUA-NHO') return bangRadar.filter((d) => d.coKenh === 'vuaNho')
+  return bangRadar
+}
+
+function veBangRadar() {
+  veBangVideo($('#bang-radar'), locDongRadar(),
+    ['tick', 'thumb', 'deXuat', 'tieuDe', 'kenh', 'views', 'vph', 'sub', 'dai', 'dang'],
+    { nguon: 'Radar đề xuất' })
+}
+
+$$('.chip-radar').forEach((c) => {
+  c.onclick = () => {
+    locRadar = c.dataset.loc
+    $$('.chip-radar').forEach((x) => x.classList.toggle('chip-chon', x === c))
+    veBangRadar()
+  }
+})
+
+$('#nut-chay-radar').onclick = async () => {
+  const tuKhoa = linhVuc()
+  const dungVideoDaChon = $('#o-radar-da-chon').checked
+  if (!tuKhoa && !dungVideoDaChon) {
+    await baoTin('Nhập từ khóa lĩnh vực (tiếng Anh), hoặc bật "Dùng video đã chọn làm hạt giống".')
+    return
+  }
+  if (dungVideoDaChon && !videoDaChon.length && !tuKhoa) {
+    await baoTin('Danh sách video đã chọn đang trống. Tick vài video ở màn Ý tưởng trước, hoặc nhập từ khóa lĩnh vực.')
+    return
+  }
+
+  $('#nut-chay-radar').disabled = true
+  $('#ghi-chu-radar').textContent = 'Đang chạy radar — mở ngầm các trang YouTube (đã tắt tiếng), khoảng 1–2 phút…'
+  $('#ghi-chu-radar').className = 'ghi-chu'
+  datTienDo({ phanTram: 2, viec: 'Bắt đầu radar' })
+  try {
+    const kq = await window.api.chayRadar({
+      tuKhoa,
+      taiKhoanId: $('#chon-tai-khoan-radar').value,
+      dungVideoDaChon,
+      soHatGiong: Number($('#o-so-hat-giong').value) || 8,
+      docTrangChu: $('#o-radar-trang-chu').checked,
+      thoiGian: $('#o-radar-thoi-gian').value
+    })
+    if (!kq.ok) {
+      $('#ghi-chu-radar').textContent = kq.loi
+      $('#ghi-chu-radar').className = 'ghi-chu ghi-chu-vang'
+      await baoTin(kq.loi)
+      return
+    }
+    bangRadar = kq.dong || []
+    locRadar = 'tat-ca'
+    $$('.chip-radar').forEach((x) => x.classList.toggle('chip-chon', x.dataset.loc === 'tat-ca'))
+    veBangRadar()
+    $('#the-ket-qua-radar').hidden = false
+    const soManh = bangRadar.filter((d) => d.nhanDeXuat === 'ĐẨY MẠNH').length
+    $('#tom-tat-radar').textContent =
+      `${bangRadar.length} video từ ${kq.soNguon} nguồn đã đọc (${kq.hatGiong.length} hạt giống` +
+      `${kq.cacLanDoc.some((l) => l.loai === 'trangChu') ? ' + trang chủ' : ''}) · ${soManh} ĐẨY MẠNH`
+    $('#canh-bao-radar').textContent = [kq.ghiChuApi, ...(kq.canhBao || [])].filter(Boolean).join(' · ')
+    $('#ghi-chu-radar').textContent = kq.ghiChu || 'Xong.'
+    $('#ghi-chu-radar').className = 'ghi-chu ghi-chu-xanh'
+    await taiCaiDat()
+    $('#the-ket-qua-radar').scrollIntoView({ behavior: 'smooth', block: 'start' })
+  } catch (loi) {
+    datTienDo({ phanTram: 100, viec: 'Radar lỗi', chiTiet: loi.message, soLoi: 1, trangThai: 'loi' })
+    await baoTin('Lỗi: ' + loi.message)
+  } finally {
+    $('#nut-chay-radar').disabled = false
+  }
+}
+$('#nut-tai-thumb-radar').onclick = () => taiThumbCuaBang($('#bang-radar'))
+
+// --- Đang hot (API) --------------------------------------------------------
+function locDongHot() {
+  if (locHot === 'KHOP') return bangHot.filter((d) => d.khopLinhVuc)
+  if (locHot === 'VUA-NHO') return bangHot.filter((d) => d.coKenh === 'vuaNho')
+  if (locHot === 'NỔ VIEW') return bangHot.filter((d) => d.nhan === 'NỔ VIEW')
+  return bangHot
+}
+
+function veBangHot() {
+  veBangVideo($('#bang-hot'), locDongHot(),
+    ['tick', 'thumb', 'nhan', 'diem', 'tieuDe', 'kenh', 'views', 'vph', 'tyLeSub', 'sub', 'dai', 'dang'],
+    { nguon: 'Đang hot' })
+}
+
+$$('.chip-hot').forEach((c) => {
+  c.onclick = () => {
+    locHot = c.dataset.loc
+    $$('.chip-hot').forEach((x) => x.classList.toggle('chip-chon', x === c))
+    veBangHot()
+  }
+})
+
+function hienBangHot(dong, tomTat) {
+  bangHot = dong
+  locHot = 'tat-ca'
+  $$('.chip-hot').forEach((x) => x.classList.toggle('chip-chon', x.dataset.loc === 'tat-ca'))
+  veBangHot()
+  $('#the-ket-qua-hot').hidden = false
+  $('#tom-tat-hot').textContent = tomTat
+  $('#the-ket-qua-hot').scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+$('#nut-lay-hot').onclick = async () => {
+  $('#nut-lay-hot').disabled = true
+  try {
+    const kq = await window.api.layVideoHot({
+      danhMuc: $('#o-danh-muc').value,
+      soLuong: Number($('#o-so-video-hot').value) || 100,
+      tuKhoaLoc: linhVuc()
+    })
+    if (!kq.ok) { await baoTin(kq.loi); return }
+    const soKhop = kq.dong.filter((d) => d.khopLinhVuc).length
+    hienBangHot(kq.dong,
+      `Thịnh hành Mỹ · ${$('#o-danh-muc').selectedOptions[0].textContent} · ${kq.dong.length}/${kq.truocLoc} video sau lọc` +
+      ` · ${soKhop} khớp lĩnh vực · dùng ${kq.quotaDaDung} đơn vị`)
+    await taiCaiDat()
+  } finally {
+    $('#nut-lay-hot').disabled = false
+  }
+}
+
+async function capNhatUoc72h() {
+  const tk = tachLinhVuc($('#nhap-linh-vuc').value || $('#nhap-tu-khoa').value).slice(0, 5)
+  if (!tk.length) { $('#uoc-72h').textContent = 'Nhập từ khóa lĩnh vực ở trên trước.'; return }
+  const c = caiDatHienTai || {}
+  const uoc = await window.api.uocQuota({
+    soTuKhoa: tk.length,
+    soVideoMoiTuKhoa: Number(c.soVideoMoiTuKhoa) || 25,
+    tinhVuotTrungViKenh: !!c.tinhVuotTrungViKenh
+  })
+  $('#uoc-72h').innerHTML = `${tk.length} từ khóa · tốn khoảng <b>${uoc.toLocaleString('vi-VN')}</b> đơn vị quota`
+}
+$('#nhap-linh-vuc').addEventListener('input', () => { if (!$('#khoi-hot').hidden) capNhatUoc72h() })
+
+$('#nut-tim-72h').onclick = async () => {
+  const tk = tachLinhVuc(linhVuc()).slice(0, 5)
+  if (!tk.length) { await baoTin('Nhập từ khóa lĩnh vực (tiếng Anh) ở ô trên cùng.'); return }
+  await capNhatUoc72h()
+  const uoc = $('#uoc-72h').textContent
+  if (!(await hoiCo(`Tìm video đăng trong 72 giờ qua cho ${tk.length} từ khóa: ${tk.join(', ')}.\n${uoc}. Tiếp tục?`, 'Tìm'))) return
+  $('#nut-tim-72h').disabled = true
+  try {
+    const kq = await window.api.timYTuong(tk, { soNgay: 3 })
+    if (!kq.ok) { await baoTin(kq.loi); return }
+    // Tìm đúng bằng từ khóa lĩnh vực nên mọi dòng đều khớp lĩnh vực.
+    for (const d of kq.dong) d.khopLinhVuc = true
+    hienBangHot(kq.dong, `Đang lên 72 giờ · ${kq.dong.length} video · ${kq.soNoView} nổ view · dùng ${kq.quotaDaDung} đơn vị`)
+    await taiCaiDat()
+  } finally {
+    $('#nut-tim-72h').disabled = false
+  }
+}
+$('#nut-tai-thumb-hot').onclick = () => taiThumbCuaBang($('#bang-hot'))
+
+// ---------------------------------------------------------------------------
+// Trình duyệt: nút mở nhanh
+// ---------------------------------------------------------------------------
+$$('.nut-mo-nhanh').forEach((b) => { b.onclick = () => moTrongApp(b.dataset.url) })
+$('#nut-sang-radar').onclick = () => {
+  moMan('de-xuat')
+  $$('.tab-de-xuat').find((t) => t.dataset.tab === 'radar').click()
+}
+$('#hop-da-chon').onclick = () => moMan('loi-thoai')
+
+// ---------------------------------------------------------------------------
+// Kiểm thử tầng 2: nạp dữ liệu MẪU vào các bảng để ảnh chụp có cái mà xem.
+// Bảng trống thì ảnh chụp không cho biết thumbnail có hiện không, ô tick có
+// lệch không, tiêu đề dài có đè cột không. Ảnh mẫu là SVG nội tuyến vì máy
+// kiểm thử không ra được mạng.
+// ---------------------------------------------------------------------------
+window.smokeDuLieuMau = async function () {
+  const mau = (i, mauNen) => 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><defs><linearGradient id="g" x1="0" x2="1">` +
+    `<stop offset="0" stop-color="${mauNen}"/><stop offset="1" stop-color="#1a2132"/></linearGradient></defs>` +
+    `<rect width="320" height="180" fill="url(#g)"/><text x="18" y="100" font-size="40" font-family="Arial" fill="#fff">#${i}</text></svg>`)
+  const tieuDe = [
+    'The Forgotten Prophet Nobody Talks About — The Full Story Of What Really Happened',
+    'Why This Ancient City Vanished Overnight',
+    'The Untold Story of the Last Kingdom (Full Documentary)',
+    'She Was Written Out Of History. Here Is Why.',
+    'Hidden History: 7 Places The Old Maps Got Wrong'
+  ]
+  const kenh = ['Old Scroll Stories', 'Quiet History', 'Deep Past Channel', 'Forgotten Pages', 'Map Room']
+  const mauNen = ['#8b5cf6', '#ff7a1a', '#17c3b2', '#ffcc33', '#ff4d4f']
+  const dong = tieuDe.map((t, i) => ({
+    videoId: `mauVideo00${i}`,
+    tieuDe: t,
+    tenKenh: kenh[i],
+    kenhId: `UCmau${i}`,
+    views: [912000, 340000, 128000, 76000, 41000][i],
+    vph: [5200, 2100, 800, 450, 190][i],
+    tyLeSub: [18.2, 3.4, 0.6, 1.1, 0.4][i],
+    vuotTrungVi: [7.1, 3.2, 1.4, 1.1, 0.9][i],
+    subKenh: [50000, 100000, 2100000, 68000, 850][i],
+    coKenh: ['vuaNho', 'vuaNho', 'lon', 'vuaNho', 'tiHon'][i],
+    quocGia: i === 2 ? 'GB' : 'US',
+    thoiLuongGiay: [3720, 2410, 5400, 1980, 1300][i],
+    ngayDang: new Date(Date.now() - (i + 1) * 36 * 3600000).toISOString(),
+    diem: [2.41, 1.62, 0.3, 0.9, -0.4][i],
+    nhan: ['NỔ VIEW', 'NỔ VIEW', 'BÌNH THƯỜNG', 'KHÁ', 'BÌNH THƯỜNG'][i],
+    tuKhoaNguon: ['bible stories'],
+    lienKet: `https://www.youtube.com/watch?v=mauVideo00${i}`,
+    thumbnailNho: mau(i + 1, mauNen[i]),
+    // Trường của radar
+    nhanDeXuat: ['ĐẨY MẠNH', 'ĐẨY MẠNH', 'MẠNH', 'CÓ ĐỀ XUẤT', 'CÓ ĐỀ XUẤT'][i],
+    soNguon: [6, 4, 2, 1, 1][i],
+    tongNguon: 9,
+    khopLinhVuc: i !== 4,
+    laHatGiong: i === 1,
+    trenTrangChu: i === 0
+  }))
+  ketQua = dong
+  veBang()
+  $('#the-ket-qua').hidden = false
+  $('#tom-tat-ket-qua').textContent = '5 video mẫu (kiểm thử giao diện)'
+  bangRadar = dong
+  veBangRadar()
+  $('#the-ket-qua-radar').hidden = false
+  $('#tom-tat-radar').textContent = '5 video mẫu từ 9 nguồn · 2 ĐẨY MẠNH'
+  $('#nhap-linh-vuc').value = 'bible stories, old testament'
+  await datChon(dong.slice(0, 3), true, 'Ý tưởng')
+  return { soDong: dong.length, daChon: videoDaChon.length }
+}
+
+// ---------------------------------------------------------------------------
 // Kiểm thử tầng 2: hợp đồng dữ liệu giữa giao diện và store.js.
 //
 // Đây là loại lỗi im lặng nhất: giao diện ghi tên khoá khác với tên mà bên kia
@@ -1489,6 +2120,7 @@ window.smokeKiemKhoaCaiDat = function () {
 
 // ---------------------------------------------------------------------------
 taiCaiDat()
+  .then(() => taiVideoDaChon())
   .then(() => taiDuAn())
   .then(() => veKhaNangCapNhat())
   .then(() => moMan('y-tuong'))

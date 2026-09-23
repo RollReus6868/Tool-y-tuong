@@ -28,10 +28,23 @@ const CAI_DAT_MAC_DINH = {
   thoiLuongToiThieuGiay: 61,
   chiVideoDai: false,       // preset "cùng hạng với mình": chỉ >= 20 phút
   viewToiThieu: 10000,
-  subToiDaTrieu: 0,         // 0 = không loại kênh lớn
   tinhVuotTrungViKenh: true,
   regionCode: 'US',
   relevanceLanguage: 'en',
+
+  // Tệp khán giả Mỹ + ưu tiên kênh vừa và nhỏ (0.4.0)
+  subToiThieu: 1000,
+  subToiDa: 100000,
+  uuTienKenhVuaNho: true,   // cộng điểm kênh trong khoảng, trừ điểm kênh lớn
+  chiKenhVuaNho: false,     // loại HẲN kênh ngoài khoảng
+  chiTiengAnh: true,        // bỏ video khai ngôn ngữ thoại khác tiếng Anh
+  uuTienKenhMy: true,       // trừ điểm kênh khai quốc gia khác Mỹ
+  chiKenhMy: false,         // loại HẲN kênh khai quốc gia khác Mỹ
+
+  // Đề xuất video (0.4.0)
+  soVideoHatGiong: 8,       // số video mở ra để đọc cột đề xuất
+  radarDocTrangChu: true,   // đọc thêm trang chủ của tài khoản
+  radarThoiGian: 'thang',   // hạt giống: video trong tuần / tháng / năm
   tuMoiPhut: 150,           // để ước thời lượng kịch bản
   tuMoiCanh: 27,            // 25-30 từ mỗi cảnh
   soTuMucTieu: 11000,       // 10.000 - 12.000 từ
@@ -74,13 +87,24 @@ function ghiJSON(duongDan, duLieu) {
   fs.renameSync(tam, duongDan)
 }
 
+// Khoá đã bỏ ở bản mới. Vẫn nằm trong tệp cài đặt cũ của người dùng mà không
+// còn ô nào sửa được — để yên là nó LỌC NGẦM kết quả mà không ai biết vì sao.
+// 0.4.0: subToiDaTrieu (triệu sub) thay bằng subToiThieu/subToiDa.
+const KHOA_DA_BO = ['subToiDaTrieu']
+
+function boKhoaCu(caiDat) {
+  const ra = { ...caiDat }
+  for (const k of KHOA_DA_BO) delete ra[k]
+  return ra
+}
+
 function taoKho(thuMuc) {
   const duongDanCaiDat = path.join(thuMuc, 'cai-dat.json')
   const duongDanCache = path.join(thuMuc, 'cache-tim-kiem.json')
 
   return {
     thuMuc,
-    docCaiDat: () => docJSON(duongDanCaiDat, CAI_DAT_MAC_DINH),
+    docCaiDat: () => boKhoaCu(docJSON(duongDanCaiDat, CAI_DAT_MAC_DINH)),
     ghiCaiDat: (caiDat) => ghiJSON(duongDanCaiDat, caiDat),
     docCache: () => docJSON(duongDanCache, { muc: {} }),
     ghiCache: (cache) => ghiJSON(duongDanCache, cache),
@@ -88,4 +112,4 @@ function taoKho(thuMuc) {
   }
 }
 
-module.exports = { taoKho, docJSON, ghiJSON, CAI_DAT_MAC_DINH, KHOA_PHUC_TAP }
+module.exports = { taoKho, docJSON, ghiJSON, boKhoaCu, CAI_DAT_MAC_DINH, KHOA_PHUC_TAP, KHOA_DA_BO }

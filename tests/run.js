@@ -1237,6 +1237,542 @@ async function chay() {
   })
 
   // =========================================================================
+  // BẢN 0.4.0
+  // =========================================================================
+  const thumbMod = require('../src/thumbnail')
+  const chonMod = require('../src/video-da-chon')
+  const radarMod = require('../src/radar-de-xuat')
+  const { chayRadar, videoTuTrang, ghepSoLieuApi } = require('../src/chay-radar')
+  const storeMod = require('../src/store')
+
+  nhom('27. Gợi ý từ khóa theo người xem MỸ')
+
+  // Bài học của lỗi 404: khẳng định NGUYÊN VĂN chuỗi gửi đi, không chỉ vài mảnh.
+  await kiem('URL gợi ý khẳng định nguyên văn — có gl=us', () => {
+    assert.strictEqual(goiMang.urlGoiY('trump bible'),
+      'https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&hl=en&gl=us&q=trump%20bible')
+  })
+
+  await kiem('layGoiY truyền gl xuống URL thật', async () => {
+    let urlDaGoi = ''
+    await goiMang.layGoiY('bible', { layChuHam: async (u) => { urlDaGoi = u; return '["bible",[]]' } })
+    assert.ok(urlDaGoi.includes('&gl=us&'), urlDaGoi)
+  })
+
+  nhom('28. Ưu tiên kênh vừa & nhỏ (1.000–100.000 sub)')
+
+  await kiem('phân loại cỡ kênh đúng ở các mốc biên', () => {
+    const c = (n, an) => chamDiem.coKenh(n, {}, an)
+    assert.strictEqual(c(999), 'tiHon')
+    assert.strictEqual(c(1000), 'vuaNho')
+    assert.strictEqual(c(100000), 'vuaNho')
+    assert.strictEqual(c(100001), 'lon')
+    assert.strictEqual(c(0), 'an', 'kênh 0 sub (thường là ẩn sub) không được coi là tí hon')
+    assert.strictEqual(c(50000, true), 'an', 'kênh ẩn sub: không biết thì không cộng không trừ')
+  })
+
+  await kiem('khoảng sub đọc từ cài đặt, không cứng trong code', () => {
+    assert.strictEqual(chamDiem.coKenh(150000, { subToiThieu: 1000, subToiDa: 200000 }), 'vuaNho')
+  })
+
+  await kiem('kênh vừa & nhỏ +0,5, kênh lớn −0,6 so với khi tắt ưu tiên', () => {
+    const bayGio = Date.parse('2026-09-22T00:00:00Z')
+    const ds = [
+      { videoId: 'nho', views: 200000, ngayDang: '2026-09-20T00:00:00Z', subKenh: 50000 },
+      { videoId: 'lon', views: 300000, ngayDang: '2026-09-20T00:00:00Z', subKenh: 5e6 }
+    ]
+    const bat = chamDiem.chamDiem(ds, { bayGio, caiDat: {} })
+    const tat = chamDiem.chamDiem(ds, { bayGio, caiDat: { uuTienKenhVuaNho: false } })
+    const lech = (id) => Math.round((bat.find((r) => r.videoId === id).diem - tat.find((r) => r.videoId === id).diem) * 100) / 100
+    assert.strictEqual(lech('nho'), 0.5)
+    assert.strictEqual(lech('lon'), -0.6)
+    assert.strictEqual(bat[0].videoId, 'nho', 'kênh nhỏ nổ view phải xếp trên kênh lớn')
+    assert.strictEqual(bat.find((r) => r.videoId === 'nho').coKenh, 'vuaNho')
+  })
+
+  await kiem('kênh khai quốc gia khác Mỹ −0,4; kênh để trống KHÔNG bị trừ', () => {
+    const bayGio = Date.parse('2026-09-22T00:00:00Z')
+    const goc = { views: 100000, ngayDang: '2026-09-20T00:00:00Z', subKenh: 40000 }
+    const ra = chamDiem.chamDiem([
+      { ...goc, videoId: 'vn', quocGia: 'VN' },
+      { ...goc, videoId: 'trong', quocGia: '' },
+      { ...goc, videoId: 'us', quocGia: 'US' }
+    ], { bayGio })
+    const d = (id) => ra.find((r) => r.videoId === id).diem
+    assert.strictEqual(Math.round((d('us') - d('vn')) * 100) / 100, 0.4)
+    assert.strictEqual(d('us'), d('trong'))
+  })
+
+  await kiem('lọc tiếng Anh: bỏ "vi", giữ "en-US" và giữ video không khai', () => {
+    const ra = chamDiem.locVideo([
+      { videoId: 'vi', thoiLuongGiay: 1800, views: 1e5, ngonNguAm: 'vi' },
+      { videoId: 'enus', thoiLuongGiay: 1800, views: 1e5, ngonNguAm: 'en-US' },
+      { videoId: 'trong', thoiLuongGiay: 1800, views: 1e5, ngonNguAm: '' },
+      { videoId: 'hi', thoiLuongGiay: 1800, views: 1e5, ngonNguAm: '', ngonNgu: 'hi' }
+    ], {})
+    assert.deepStrictEqual(ra.map((r) => r.videoId), ['enus', 'trong'])
+  })
+
+  await kiem('loại hẳn kênh ngoài khoảng sub chỉ khi bật, và GIỮ kênh ẩn sub', () => {
+    const ds = [
+      { videoId: 'lon', thoiLuongGiay: 1800, views: 1e5, subKenh: 2e6 },
+      { videoId: 'tiHon', thoiLuongGiay: 1800, views: 1e5, subKenh: 300 },
+      { videoId: 'vua', thoiLuongGiay: 1800, views: 1e5, subKenh: 30000 },
+      { videoId: 'an', thoiLuongGiay: 1800, views: 1e5, subKenh: 0, anSub: true }
+    ]
+    assert.strictEqual(chamDiem.locVideo(ds, {}).length, 4, 'mặc định chỉ trừ điểm, không loại')
+    assert.deepStrictEqual(chamDiem.locVideo(ds, { chiKenhVuaNho: true }).map((r) => r.videoId), ['vua', 'an'])
+  })
+
+  await kiem('loại hẳn kênh ngoài Mỹ chỉ khi bật chiKenhMy', () => {
+    const ds = [
+      { videoId: 'in', thoiLuongGiay: 1800, views: 1e5, quocGia: 'IN' },
+      { videoId: 'us', thoiLuongGiay: 1800, views: 1e5, quocGia: 'US' },
+      { videoId: 'trong', thoiLuongGiay: 1800, views: 1e5, quocGia: '' }
+    ]
+    assert.strictEqual(chamDiem.locVideo(ds, {}).length, 3)
+    assert.deepStrictEqual(chamDiem.locVideo(ds, { chiKenhMy: true }).map((r) => r.videoId), ['us', 'trong'])
+  })
+
+  await kiem('khoá cũ subToiDaTrieu bị bỏ khi đọc — không được lọc ngầm', () => {
+    const d = thuMucTam('khoa-cu')
+    fs.writeFileSync(path.join(d, 'cai-dat.json'), JSON.stringify({ subToiDaTrieu: 5, soNgay: 7 }))
+    const cd = storeMod.taoKho(d).docCaiDat()
+    assert.ok(!('subToiDaTrieu' in cd), 'khoá cũ vẫn còn trong cài đặt')
+    assert.strictEqual(cd.soNgay, 7, 'các khoá khác phải giữ nguyên')
+    assert.strictEqual(cd.subToiThieu, 1000)
+    assert.strictEqual(cd.subToiDa, 100000)
+  })
+
+  await kiem('timYTuong gắn quốc gia + ẩn sub của kênh và áp ưu tiên kênh nhỏ', async () => {
+    const layJSONHam = async (url) => {
+      const u = new URL(url)
+      if (u.pathname.endsWith('/search')) return { items: [{ id: { videoId: 'aaaaaaaaaaa' } }, { id: { videoId: 'bbbbbbbbbbb' } }] }
+      if (u.pathname.endsWith('/videos')) {
+        return {
+          items: ['aaaaaaaaaaa', 'bbbbbbbbbbb'].map((id, i) => ({
+            id,
+            snippet: { title: 't' + i, channelId: 'UC' + i, channelTitle: 'k' + i, publishedAt: '2026-09-20T00:00:00Z', defaultAudioLanguage: 'en' },
+            statistics: { viewCount: '100000' },
+            contentDetails: { duration: 'PT30M' }
+          }))
+        }
+      }
+      if (u.pathname.endsWith('/channels')) {
+        return { items: [
+          { id: 'UC0', snippet: { title: 'k0', country: 'us' }, statistics: { subscriberCount: '20000' }, contentDetails: { relatedPlaylists: { uploads: '' } } },
+          { id: 'UC1', snippet: { title: 'k1' }, statistics: { subscriberCount: '0', hiddenSubscriberCount: true }, contentDetails: { relatedPlaylists: { uploads: '' } } }
+        ] }
+      }
+      return { items: [] }
+    }
+    const kq = await timYTuong({
+      tuKhoa: ['x'], caiDat: { soNgay: 14, soVideoMoiTuKhoa: 5, viewToiThieu: 0 },
+      khoa: { id: 'k1', ten: 'thử', khoa: 'AIza' }, boDem: null, layJSONHam
+    })
+    const a = kq.dong.find((d) => d.videoId === 'aaaaaaaaaaa')
+    const b = kq.dong.find((d) => d.videoId === 'bbbbbbbbbbb')
+    assert.strictEqual(a.quocGia, 'US', 'quốc gia phải viết hoa để so với "US"')
+    assert.strictEqual(a.coKenh, 'vuaNho')
+    assert.strictEqual(b.anSub, true)
+    assert.strictEqual(b.coKenh, 'an')
+  })
+
+  nhom('29. Thumbnail — lấy từ API và tải về')
+
+  await kiem('videos.list: thumbnail maxres khi có, lùi xuống high khi thiếu', async () => {
+    const khach = ytApi.taoKhachHang({
+      khoa: 'AIza', idKhoa: 'k',
+      layJSONHam: async () => ({ items: [
+        { id: 'aaaaaaaaaaa', snippet: { thumbnails: { maxres: { url: 'https://i.ytimg.com/vi/aaaaaaaaaaa/maxresdefault.jpg' }, medium: { url: 'M' } } }, statistics: {}, contentDetails: {} },
+        { id: 'bbbbbbbbbbb', snippet: { thumbnails: { high: { url: 'https://i.ytimg.com/vi/bbbbbbbbbbb/hqdefault.jpg' } }, defaultAudioLanguage: 'en-US' }, statistics: {}, contentDetails: {} }
+      ] })
+    })
+    const [a, b] = await khach.soLieuVideo(['aaaaaaaaaaa', 'bbbbbbbbbbb'])
+    assert.strictEqual(a.thumbnail, 'https://i.ytimg.com/vi/aaaaaaaaaaa/maxresdefault.jpg')
+    assert.strictEqual(a.thumbnailNho, 'M')
+    assert.strictEqual(b.thumbnail, 'https://i.ytimg.com/vi/bbbbbbbbbbb/hqdefault.jpg')
+    assert.strictEqual(b.thumbnailNho, 'https://i.ytimg.com/vi/bbbbbbbbbbb/mqdefault.jpg', 'thiếu medium thì dựng URL mq')
+    assert.strictEqual(b.ngonNguAm, 'en-US')
+  })
+
+  await kiem('thứ tự URL thử: URL của API trước, rồi maxres → sd → hq → mq', () => {
+    assert.deepStrictEqual(thumbMod.cacUrlThu({ videoId: 'abcdefghijk', thumbnail: 'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg' }), [
+      'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg',
+      'https://i.ytimg.com/vi/abcdefghijk/maxresdefault.jpg',
+      'https://i.ytimg.com/vi/abcdefghijk/sddefault.jpg',
+      'https://i.ytimg.com/vi/abcdefghijk/mqdefault.jpg'
+    ])
+  })
+
+  await kiem('không tin URL thumbnail lạ (không phải ytimg)', () => {
+    const ds = thumbMod.cacUrlThu({ videoId: 'abcdefghijk', thumbnail: 'https://evil.example/x.jpg' })
+    assert.ok(ds.every((u) => u.startsWith('https://i.ytimg.com/')))
+  })
+
+  await kiem('tên tệp an toàn trên Windows, có số thứ tự 3 chữ số và mã video', () => {
+    const ten = thumbMod.tenTepThumbnail({ videoId: 'abcdefghijk', tieuDe: 'What: "God" said <to> Moses? / Part 1*|. ' }, 7, 40)
+    assert.ok(!/[<>:"/\\|?*]/.test(ten), ten)
+    assert.ok(ten.startsWith('007 - '), ten)
+    assert.ok(ten.endsWith(' [abcdefghijk].jpg'), ten)
+    assert.ok(!/\.\s*\[/.test(ten), 'không được có dấu chấm cuối tên trước [id] — Windows cắt mất')
+  })
+
+  await kiem('maxres 404 → lùi sang sddefault; ảnh xám 200 nhưng quá nhỏ cũng phải bỏ qua', async () => {
+    const d = thuMucTam('thumb')
+    const daGoi = []
+    const kq = await thumbMod.taiMotThumbnail({ videoId: 'abcdefghijk', tieuDe: 'A' }, d, 1, {
+      layNhiPhanHam: async (u) => {
+        daGoi.push(u)
+        if (u.includes('maxres')) return { ok: false, maHttp: 404, du: Buffer.alloc(1100) }
+        if (u.includes('sddefault')) return { ok: true, maHttp: 200, du: Buffer.alloc(900) } // ảnh xám
+        return { ok: true, maHttp: 200, du: Buffer.alloc(30000, 1) }
+      }
+    })
+    assert.strictEqual(kq.ok, true)
+    assert.ok(kq.url.includes('hqdefault'), 'phải bỏ qua ảnh xám sddefault')
+    assert.strictEqual(fs.statSync(kq.duongDan).size, 30000)
+    assert.strictEqual(daGoi.length, 3)
+  })
+
+  await kiem('mọi cỡ đều hỏng thì báo lỗi rõ, không ghi tệp rỗng', async () => {
+    const d = thuMucTam('thumb-hong')
+    const kq = await thumbMod.taiMotThumbnail({ videoId: 'abcdefghijk' }, d, 1, {
+      layNhiPhanHam: async () => ({ ok: false, maHttp: 404, du: Buffer.alloc(0) })
+    })
+    assert.strictEqual(kq.ok, false)
+    assert.ok(/HTTP 404/.test(kq.loi))
+    assert.strictEqual(fs.readdirSync(d).length, 0)
+  })
+
+  await kiem('tải nhiều ảnh: đánh số liên tục, video lỗi không làm hỏng video khác', async () => {
+    const d = thuMucTam('thumb-nhieu')
+    const kq = await thumbMod.taiNhieuThumbnail([
+      { videoId: 'aaaaaaaaaaa', tieuDe: 'Một' },
+      { videoId: 'bbbbbbbbbbb', tieuDe: 'Hai' },
+      { videoId: 'ccccccccccc', tieuDe: 'Ba' }
+    ], d, {
+      layNhiPhanHam: async (u) => (u.includes('bbbbbbbbbbb')
+        ? { ok: false, maHttp: 404, du: Buffer.alloc(0) }
+        : { ok: true, maHttp: 200, du: Buffer.alloc(9000, 2) })
+    })
+    assert.strictEqual(kq.ketQua.length, 2)
+    assert.strictEqual(kq.loi.length, 1)
+    const cac = fs.readdirSync(d).sort()
+    assert.ok(cac[0].startsWith('001 - Một'), cac.join(' | '))
+    assert.ok(cac[1].startsWith('003 - Ba'), 'số thứ tự theo vị trí trong danh sách, không dồn số')
+  })
+
+  await kiem('CSP của giao diện cho phép ảnh từ i.ytimg.com (thiếu là ảnh vỡ im lặng)', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8')
+    const csp = (html.match(/Content-Security-Policy" content="([^"]+)"/) || [])[1] || ''
+    assert.ok(/img-src[^;]*https:\/\/i\.ytimg\.com/.test(csp), csp)
+    assert.ok(/img-src[^;]*data:/.test(csp), 'ảnh mẫu kiểm thử tầng 2 cần data:')
+  })
+
+  nhom('30. Danh sách "Video đã chọn"')
+
+  await kiem('thêm bỏ trùng theo videoId, giữ vị trí cũ nhưng cập nhật số view', () => {
+    let ds = chonMod.themVao([], [{ videoId: 'aaaaaaaaaaa', tieuDe: 'A', views: 10 }, { videoId: 'bbbbbbbbbbb', tieuDe: 'B' }], 'Ý tưởng')
+    ds = chonMod.themVao(ds, [{ videoId: 'aaaaaaaaaaa', tieuDe: 'A', views: 99 }], 'Radar')
+    assert.deepStrictEqual(ds.map((v) => v.videoId), ['aaaaaaaaaaa', 'bbbbbbbbbbb'])
+    assert.strictEqual(ds[0].views, 99)
+    assert.strictEqual(ds[0].nguon, 'Ý tưởng', 'nguồn ban đầu không bị ghi đè')
+  })
+
+  await kiem('bỏ qua mã video không hợp lệ', () => {
+    const ds = chonMod.themVao([], [{ videoId: 'ngan' }, { videoId: '' }, null, { videoId: 'aaaaaaaaaaa' }])
+    assert.deepStrictEqual(ds.map((v) => v.videoId), ['aaaaaaaaaaa'])
+  })
+
+  await kiem('vượt trần thì bỏ video thêm sớm nhất', () => {
+    const nhieu = Array.from({ length: chonMod.TOI_DA + 5 }, (_, i) => ({ videoId: ('v' + String(i).padStart(10, '0')).slice(0, 11) }))
+    const ds = chonMod.themVao([], nhieu)
+    assert.strictEqual(ds.length, chonMod.TOI_DA)
+    assert.strictEqual(ds[0].videoId, nhieu[5].videoId)
+  })
+
+  await kiem('danh sách link nguyên văn, mỗi dòng một link', () => {
+    assert.strictEqual(chonMod.danhSachLink([{ videoId: 'aaaaaaaaaaa' }, { videoId: 'bbbbbbbbbbb' }]),
+      'https://www.youtube.com/watch?v=aaaaaaaaaaa\nhttps://www.youtube.com/watch?v=bbbbbbbbbbb')
+  })
+
+  await kiem('lưu ra tệp RIÊNG, không đụng cai-dat.json, đọc lại đúng', () => {
+    const d = thuMucTam('chon')
+    chonMod.ghi(d, [{ videoId: 'aaaaaaaaaaa', tieuDe: 'A', views: 5 }, { videoId: 'xx' }])
+    assert.ok(fs.existsSync(path.join(d, 'video-da-chon.json')))
+    assert.ok(!fs.existsSync(path.join(d, 'cai-dat.json')), 'không được ghi vào tệp cài đặt')
+    const lai = chonMod.doc(d)
+    assert.deepStrictEqual(lai.map((v) => v.videoId), ['aaaaaaaaaaa'])
+    assert.strictEqual(lai[0].views, 5)
+  })
+
+  await kiem('tệp hỏng thì trả danh sách rỗng, không vỡ app', () => {
+    const d = thuMucTam('chon-hong')
+    fs.writeFileSync(path.join(d, 'video-da-chon.json'), '{hỏng')
+    assert.deepStrictEqual(chonMod.doc(d), [])
+  })
+
+  await kiem('prompt dàn ý có khối VIDEO THAM KHẢO khi có, và không có khi không', () => {
+    const co = kichBanMod.taoPromptDanY({ yeuCau: { videoThamKhao: [{ tieuDe: 'The Lost Scroll', tenKenh: 'K', views: 120000, phut: 60 }] } })
+    const khong = kichBanMod.taoPromptDanY({})
+    assert.ok(co.includes('VIDEO THAM KHẢO'))
+    assert.ok(co.includes('"The Lost Scroll" — K · 120,000 views · 60 min'))
+    assert.ok(/không chép tiêu đề/i.test(co), 'phải dặn rõ không chép')
+    assert.ok(!khong.includes('VIDEO THAM KHẢO'))
+  })
+
+  nhom('31. Bảng Thịnh hành: phân trang và danh mục không có bảng')
+
+  await kiem('120 video = 3 trang 50/50/20, đường dẫn là /videos, có pageToken', async () => {
+    const daGoi = []
+    const khach = ytApi.taoKhachHang({
+      khoa: 'AIza', idKhoa: 'k',
+      layJSONHam: async (url) => {
+        daGoi.push(new URL(url))
+        const n = Number(new URL(url).searchParams.get('maxResults'))
+        return { items: Array.from({ length: n }, (_, i) => ({ id: `v${daGoi.length}_${i}`.padEnd(11, 'x'), snippet: {}, statistics: {}, contentDetails: {} })), nextPageToken: 'T' + daGoi.length }
+      }
+    })
+    const ra = await khach.videoThinhHanh({ soLuong: 120, danhMuc: '27' })
+    assert.strictEqual(ra.length, 120)
+    assert.deepStrictEqual(daGoi.map((u) => u.searchParams.get('maxResults')), ['50', '50', '20'])
+    assert.ok(daGoi.every((u) => u.pathname === '/youtube/v3/videos'))
+    assert.strictEqual(daGoi[1].searchParams.get('pageToken'), 'T1')
+    assert.strictEqual(daGoi[0].searchParams.get('videoCategoryId'), '27')
+    assert.strictEqual(daGoi[0].searchParams.get('chart'), 'mostPopular')
+  })
+
+  await kiem('404 videoChartNotFound KHÔNG bị báo là "lỗi của tool"', async () => {
+    const khach = ytApi.taoKhachHang({
+      khoa: 'AIza', idKhoa: 'k',
+      layJSONHam: async () => { const e = new Error('HTTP 404'); e.maHttp = 404; e.than = '{"error":{"errors":[{"reason":"videoChartNotFound"}]}}'; throw e }
+    })
+    await assert.rejects(() => khach.videoThinhHanh({ danhMuc: '10' }), (e) => e.khongCoBang && !/lỗi của tool/i.test(e.message))
+  })
+
+  await kiem('channels.list: quốc gia viết hoa + cờ ẩn sub', async () => {
+    const khach = ytApi.taoKhachHang({
+      khoa: 'AIza', idKhoa: 'k',
+      layJSONHam: async () => ({ items: [{ id: 'UC1', snippet: { title: 'K', country: 'gb' }, statistics: { subscriberCount: '0', hiddenSubscriberCount: true }, contentDetails: {} }] })
+    })
+    const k = (await khach.soLieuKenh(['UC1'])).get('UC1')
+    assert.strictEqual(k.quocGia, 'GB')
+    assert.strictEqual(k.anSub, true)
+  })
+
+  nhom('32. Radar đề xuất — URL, bộ lọc tìm kiếm, đọc ytInitialData')
+
+  await kiem('bộ lọc sp dựng từ byte: tuần/tháng + lượt xem + chỉ video', () => {
+    assert.strictEqual(radarMod.spTimKiem({ thoiGian: 'tuan', sapXep: 'luot-xem' }), 'CAMSBAgDEAE=')
+    assert.strictEqual(radarMod.spTimKiem({ thoiGian: 'thang', sapXep: 'luot-xem' }), 'CAMSBAgEEAE=')
+    assert.strictEqual(radarMod.spTimKiem({ thoiGian: '', sapXep: 'lien-quan' }), 'EgIQAQ==')
+  })
+
+  await kiem('URL radar khẳng định nguyên văn, luôn có hl=en&gl=US', () => {
+    assert.strictEqual(radarMod.urlTimKiem('bible stories', { thoiGian: 'thang' }),
+      'https://www.youtube.com/results?search_query=bible%20stories&sp=CAMSBAgEEAE%3D&hl=en&gl=US')
+    assert.strictEqual(radarMod.urlXem('abcdefghijk'), 'https://www.youtube.com/watch?v=abcdefghijk&hl=en&gl=US')
+    assert.strictEqual(radarMod.urlTrangChu(), 'https://www.youtube.com/?hl=en&gl=US')
+  })
+
+  await kiem('đọc số view dạng chữ tiếng Anh', () => {
+    assert.strictEqual(radarMod.docSoView('1,234,567 views'), 1234567)
+    assert.strictEqual(radarMod.docSoView('1.2M views'), 1200000)
+    assert.strictEqual(radarMod.docSoView('12K views'), 12000)
+    assert.strictEqual(radarMod.docSoView('No views'), 0)
+    assert.strictEqual(radarMod.docSoView(''), 0)
+  })
+
+  await kiem('đọc thời lượng H:MM:SS / M:SS', () => {
+    assert.strictEqual(radarMod.docThoiLuong('1:02:03'), 3723)
+    assert.strictEqual(radarMod.docThoiLuong('12:34'), 754)
+    assert.strictEqual(radarMod.docThoiLuong('LIVE'), 0)
+  })
+
+  // Dữ liệu mẫu theo đúng hai dạng YouTube đang dùng: renderer cũ và lockupViewModel mới.
+  const mauXem = {
+    contents: { twoColumnWatchNextResults: {
+      results: { results: { contents: [{ videoRenderer: { videoId: 'KHONGLAYxxx', title: { simpleText: 'danh sách phát, không phải đề xuất' } } }] } },
+      secondaryResults: { secondaryResults: { results: [
+        { compactVideoRenderer: { videoId: 'aaaaaaaaaaa', title: { simpleText: 'Old Testament Secrets' }, longBylineText: { runs: [{ text: 'Kenh A' }] }, viewCountText: { simpleText: '1,200 views' }, lengthText: { simpleText: '42:10' } } },
+        { lockupViewModel: { contentId: 'bbbbbbbbbbb', contentType: 'LOCKUP_CONTENT_TYPE_VIDEO',
+          contentImage: { thumbnailViewModel: { overlays: [{ thumbnailOverlayBadgeViewModel: { thumbnailBadges: [{ thumbnailBadgeViewModel: { text: '1:05:00' } }] } }] } },
+          metadata: { lockupMetadataViewModel: { title: { content: 'The Book They Removed' },
+            metadata: { contentMetadataViewModel: { metadataRows: [
+              { metadataParts: [{ text: { content: 'Kenh B' } }] },
+              { metadataParts: [{ text: { content: '2.3M views' } }, { text: { content: '3 days ago' } }] }
+            ] } } } } } },
+        { lockupViewModel: { contentId: 'PLdanhsachphat', contentType: 'LOCKUP_CONTENT_TYPE_PLAYLIST' } },
+        { reelItemRenderer: { videoId: 'shortsxxxxx' } },
+        { compactVideoRenderer: { videoId: 'aaaaaaaaaaa', title: { simpleText: 'trùng' } } },
+        { compactVideoRenderer: { videoId: 'hatgiongxxx', title: { simpleText: 'chính video đang xem' } } },
+        { compactVideoRenderer: { videoId: 'ngan0000000', title: { simpleText: 'short lọt' }, lengthText: { simpleText: '0:45' } } }
+      ] } }
+    } }
+  }
+
+  await kiem('trang xem: chỉ lấy CỘT ĐỀ XUẤT, đọc được cả renderer cũ lẫn lockup mới', () => {
+    const khoi = radarMod.khoiDeXuatTrangXem(mauXem)
+    const ds = radarMod.rutVideoTuDuLieu(khoi, { boQuaId: 'hatgiongxxx' })
+    assert.deepStrictEqual(ds.map((v) => v.videoId), ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ngan0000000'])
+    assert.deepStrictEqual(ds.map((v) => v.viTri), [1, 2, 3], 'vị trí phải liên tục sau khi bỏ trùng')
+    const b = ds[1]
+    assert.strictEqual(b.tieuDe, 'The Book They Removed')
+    assert.strictEqual(b.tenKenh, 'Kenh B')
+    assert.strictEqual(b.viewUoc, 2300000)
+    assert.strictEqual(b.thoiLuongGiay, 3900)
+    assert.strictEqual(ds[0].thoiLuongGiay, 2530)
+  })
+
+  await kiem('bỏ qua Shorts, playlist, video trùng và chính video hạt giống', () => {
+    const ds = radarMod.rutVideoTuDuLieu(radarMod.khoiDeXuatTrangXem(mauXem), { boQuaId: 'hatgiongxxx' })
+    const ids = ds.map((v) => v.videoId)
+    assert.ok(!ids.includes('shortsxxxxx'))
+    assert.ok(!ids.includes('KHONGLAYxxx'), 'danh sách phát bên trái không phải đề xuất')
+    assert.ok(!ids.some((i) => i.startsWith('PL')))
+    assert.ok(!ids.includes('hatgiongxxx'))
+  })
+
+  await kiem('tổng hợp: đếm theo NGUỒN, không đếm trùng trong cùng một nguồn', () => {
+    const v = (id, viTri) => ({ videoId: id, viTri, tieuDe: id, viewUoc: 0, thoiLuongGiay: 1800 })
+    const ra = radarMod.tongHop([
+      { loai: 'xem', nguon: 's1', video: [v('xxxxxxxxxxx', 1), v('yyyyyyyyyyy', 2)] },
+      { loai: 'xem', nguon: 's1', video: [v('xxxxxxxxxxx', 1)] },
+      { loai: 'xem', nguon: 's2', video: [v('xxxxxxxxxxx', 3)] },
+      { loai: 'xem', nguon: 's3', video: [v('xxxxxxxxxxx', 2)] },
+      { loai: 'trangChu', nguon: 'trang-chu', video: [v('zzzzzzzzzzz', 1)] }
+    ])
+    const x = ra.find((r) => r.videoId === 'xxxxxxxxxxx')
+    assert.strictEqual(x.soNguon, 3)
+    assert.strictEqual(x.tongNguon, 4)
+    assert.strictEqual(x.nhanDeXuat, 'ĐẨY MẠNH')
+    assert.strictEqual(ra[0].videoId, 'xxxxxxxxxxx')
+    const z = ra.find((r) => r.videoId === 'zzzzzzzzzzz')
+    assert.strictEqual(z.trenTrangChu, true)
+    assert.strictEqual(z.diemDeXuat, 1.5, 'trang chủ vị trí 1 nặng 1,5')
+    assert.strictEqual(ra.find((r) => r.videoId === 'yyyyyyyyyyy').nhanDeXuat, 'CÓ ĐỀ XUẤT')
+  })
+
+  await kiem('ngưỡng ĐẨY MẠNH co giãn theo số nguồn (ít nhất 3, hoặc 35%)', () => {
+    assert.strictEqual(radarMod.nhanDeXuat(3, 8), 'ĐẨY MẠNH')
+    assert.strictEqual(radarMod.nhanDeXuat(3, 12), 'MẠNH')
+    assert.strictEqual(radarMod.nhanDeXuat(5, 12), 'ĐẨY MẠNH')
+    assert.strictEqual(radarMod.nhanDeXuat(2, 2), 'MẠNH', '2/2 nguồn chưa đủ gọi là đẩy mạnh')
+  })
+
+  await kiem('khớp lĩnh vực: trùng cụm thì khớp, một chữ lẻ thì không', () => {
+    const lv = radarMod.tachTuLinhVuc('bible stories, old testament')
+    assert.strictEqual(radarMod.khopLinhVuc('10 Bible Stories You Never Heard', lv), true)
+    assert.strictEqual(radarMod.khopLinhVuc('The Old Testament Explained', lv), true)
+    assert.strictEqual(radarMod.khopLinhVuc('Best Stories Of 2026', lv), false)
+    assert.strictEqual(radarMod.khopLinhVuc('Bible Story Time: Moses', lv), true, 'bible + story số ít vẫn đủ 2 từ')
+  })
+
+  await kiem('chọn hạt giống xen kẽ giữa các từ khóa, bỏ Shorts, ưu tiên video đã chọn', () => {
+    const t1 = [{ videoId: 'a1' }, { videoId: 'a2' }, { videoId: 'a3' }]
+    const t2 = [{ videoId: 'b1', thoiLuongGiay: 30 }, { videoId: 'b2' }]
+    assert.deepStrictEqual(radarMod.chonHatGiong([t1, t2], 4, { daCo: ['z9'] }), ['z9', 'a1', 'a2', 'b2'])
+  })
+
+  await kiem('nhận ra trang xác minh / đăng nhập', () => {
+    assert.ok(radarMod.laTrangChan('https://consent.youtube.com/m?continue=x'))
+    assert.ok(radarMod.laTrangChan('https://www.google.com/sorry/index?continue=x'))
+    assert.ok(!radarMod.laTrangChan('https://www.youtube.com/watch?v=abcdefghijk'))
+  })
+
+  await kiem('script tiêm vào trang: hàm tự gọi, không arrow, không strict, trả chuỗi JSON', () => {
+    for (const loai of ['xem', 'tim', 'trangChu']) {
+      const sc = trinhDuyet.scriptDocTrang(loai)
+      assert.ok(sc.startsWith('(function () {'))
+      assert.ok(!sc.includes('=>'), 'không được dùng arrow')
+      assert.ok(!/use strict/.test(sc))
+      assert.ok(sc.includes('JSON.stringify'))
+      new Function(sc) // cú pháp hợp lệ
+    }
+  })
+
+  nhom('33. Radar đề xuất — cả chuỗi với trình đọc giả')
+
+  const trangTim = (ids) => ({ coDuLieu: true, url: 'https://www.youtube.com/results', idDom: [],
+    khoi: { x: ids.map((id) => ({ videoRenderer: { videoId: id, title: { runs: [{ text: 'Bible Stories ' + id }] }, lengthText: { simpleText: '30:00' } } })) } })
+  const trangXem = (ids) => ({ coDuLieu: true, url: 'https://www.youtube.com/watch', idDom: [],
+    khoi: { secondaryResults: { results: ids.map((id, i) => ({ compactVideoRenderer: { videoId: id, title: { simpleText: 'Bible Stories ' + id }, lengthText: { simpleText: '25:00' }, viewCountText: { simpleText: `${(i + 1) * 1000} views` } } })) } } })
+
+  await kiem('gọi đúng thứ tự: trang tìm → trang xem từng hạt giống → trang chủ; tổng hợp đúng', async () => {
+    const daMo = []
+    const kq = await chayRadar({
+      tuKhoaLinhVuc: 'bible stories',
+      soHatGiong: 3,
+      docTrangChu: true,
+      ngu: async () => {},
+      docTrang: async (url, { loai }) => {
+        daMo.push(loai + ' ' + url)
+        if (loai === 'tim') return trangTim(['s0000000001', 's0000000002', 's0000000003', 's0000000004'])
+        if (loai === 'xem') return trangXem(['hothothot01', 'binhthuong1', 'x' + url.slice(-24, -14)])
+        return trangXem(['hothothot01'])
+      }
+    })
+    assert.deepStrictEqual(daMo.map((m) => m.split(' ')[0]), ['tim', 'xem', 'xem', 'xem', 'trangChu'])
+    assert.ok(daMo[0].endsWith('search_query=bible%20stories&sp=CAMSBAgEEAE%3D&hl=en&gl=US'), daMo[0])
+    assert.ok(daMo[1].endsWith('watch?v=s0000000001&hl=en&gl=US'), daMo[1])
+    assert.deepStrictEqual(kq.hatGiong, ['s0000000001', 's0000000002', 's0000000003'])
+    const hot = kq.dong.find((d) => d.videoId === 'hothothot01')
+    assert.strictEqual(hot.soNguon, 4, '3 cột đề xuất + trang chủ')
+    assert.strictEqual(hot.nhanDeXuat, 'ĐẨY MẠNH')
+    assert.strictEqual(kq.dong[0].videoId, 'hothothot01')
+    assert.strictEqual(hot.khopLinhVuc, true)
+  })
+
+  await kiem('ytInitialData hỏng thì lùi về mã video đọc từ thẻ <a>', () => {
+    const ds = videoTuTrang({ coDuLieu: true, khoi: null, idDom: ['aaaaaaaaaaa', 'hatgiongxxx', 'bbbbbbbbbbb'] }, 'xem', { boQuaId: 'hatgiongxxx' })
+    assert.deepStrictEqual(ds.map((v) => v.videoId), ['aaaaaaaaaaa', 'bbbbbbbbbbb'])
+    assert.deepStrictEqual(ds.map((v) => v.viTri), [1, 2])
+  })
+
+  await kiem('YouTube bắt xác minh thì DỪNG và nói rõ cách xử lý', async () => {
+    await assert.rejects(() => chayRadar({
+      tuKhoaLinhVuc: 'bible', soHatGiong: 2, docTrangChu: false, ngu: async () => {},
+      docTrang: async () => ({ coDuLieu: false, url: 'https://www.google.com/sorry/index?x=1', khoi: null, idDom: [] })
+    }), /xác minh.*Trình duyệt/s)
+  })
+
+  await kiem('một hạt giống lỗi không làm hỏng cả lượt, lỗi được ghi vào cảnh báo', async () => {
+    let lan = 0
+    const kq = await chayRadar({
+      tuKhoaLinhVuc: 'bible stories', soHatGiong: 2, docTrangChu: false, ngu: async () => {},
+      docTrang: async (url, { loai }) => {
+        if (loai === 'tim') return trangTim(['s0000000001', 's0000000002'])
+        lan++
+        if (lan === 1) throw new Error('quá thời gian tải trang')
+        return trangXem(['aaaaaaaaaaa'])
+      }
+    })
+    assert.strictEqual(kq.dong.length, 1)
+    assert.ok(kq.canhBao.some((c) => /quá thời gian/.test(c)))
+  })
+
+  await kiem('ghép số liệu API: lọc video không phải tiếng Anh, giữ dòng chưa có số liệu', () => {
+    const dongRadar = [
+      { videoId: 'aaaaaaaaaaa', diemDeXuat: 3, soNguon: 3, tongNguon: 4, nhanDeXuat: 'ĐẨY MẠNH', nguon: ['s1'], viewUoc: 1 },
+      { videoId: 'bbbbbbbbbbb', diemDeXuat: 2, soNguon: 2, tongNguon: 4, nhanDeXuat: 'MẠNH', nguon: ['s1'], viewUoc: 1 },
+      { videoId: 'ccccccccccc', diemDeXuat: 1, soNguon: 1, tongNguon: 4, nhanDeXuat: 'CÓ ĐỀ XUẤT', nguon: ['s2'], viewUoc: 777 }
+    ]
+    const api = [
+      { videoId: 'aaaaaaaaaaa', kenhId: 'UC1', views: 90000, ngayDang: '2026-09-20T00:00:00Z', thoiLuongGiay: 1800, ngonNguAm: 'en' },
+      { videoId: 'bbbbbbbbbbb', kenhId: 'UC1', views: 50000, ngayDang: '2026-09-20T00:00:00Z', thoiLuongGiay: 1800, ngonNguAm: 'es' }
+    ]
+    const bangKenh = new Map([['UC1', { subKenh: 20000, quocGia: 'US', anSub: false }]])
+    const ra = ghepSoLieuApi(dongRadar, api, bangKenh, {}, { bayGio: Date.parse('2026-09-22T00:00:00Z') })
+    assert.deepStrictEqual(ra.map((r) => r.videoId), ['aaaaaaaaaaa', 'ccccccccccc'])
+    assert.strictEqual(ra[0].coKenh, 'vuaNho')
+    assert.strictEqual(ra[0].nhanDeXuat, 'ĐẨY MẠNH', 'nhãn radar không được mất khi ghép')
+    assert.deepStrictEqual(ra[0].nguon, ['s1'])
+    assert.strictEqual(ra[1].coSoLieuApi, false)
+    assert.strictEqual(ra[1].views, 777, 'không có API thì dùng số view ước từ trang')
+  })
+
+  // =========================================================================
   console.log('\n' + '─'.repeat(58))
   console.log(`TẦNG 1: ${soQua} qua, ${soTruot.length} truột`)
   if (soTruot.length) {

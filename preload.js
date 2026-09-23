@@ -13,8 +13,17 @@ contextBridge.exposeInMainWorld('api', {
   // Ý tưởng
   ghepTuKhoa: (chuNhap, soLuong) => goi('tukhoa:ghep', { chuNhap, soLuong }),
   uocQuota: (thamSo) => goi('quota:uoc', thamSo),
-  timYTuong: (tuKhoa) => goi('ytuong:tim', { tuKhoa }),
+  timYTuong: (tuKhoa, ghiDe) => goi('ytuong:tim', { tuKhoa, ghiDe }),
   xuatExcel: (dong, tuKhoa) => goi('xuat:excel', { dong, tuKhoa }),
+
+  // Video đã chọn + thumbnail
+  docVideoDaChon: () => goi('chon:doc'),
+  ghiVideoDaChon: (ds) => goi('chon:ghi', { ds }),
+  taiThumbnail: (videos, duAnMa) => goi('thumb:tai', { videos, duAnMa }),
+
+  // Đề xuất video
+  chayRadar: (thamSo) => goi('dexuat:radar', thamSo),
+  layVideoHot: (thamSo) => goi('dexuat:hot', thamSo),
 
   // Kênh theo dõi
   themKenh: (dinhDanh) => goi('kenh:them', { dinhDanh }),
@@ -69,6 +78,7 @@ contextBridge.exposeInMainWorld('api', {
   xoaTaiKhoan: (id) => goi('taikhoan:xoa', { id }),
   moTab: (taiKhoanId, url) => goi('duyet:mo-tab', { taiKhoanId, url }),
   chonTab: (tabId) => goi('duyet:chon-tab', { tabId }),
+  moNhanhTrongApp: (url) => goi('duyet:mo-nhanh', { url }),
   dongTab: (tabId) => goi('duyet:dong-tab', { tabId }),
   dieuHuong: (tabId, url) => goi('duyet:dieu-huong', { tabId, url }),
   datKhungDuyet: (khung) => goi('duyet:khung', khung),

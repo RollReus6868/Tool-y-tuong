@@ -86,6 +86,42 @@ function tachDinhDanhKenh(chu) {
   return null
 }
 
+// Chọn thumbnail đẹp nhất có thật. YouTube KHÔNG phải video nào cũng có bản
+// maxres (1280×720) — thiếu thì trường đó vắng hẳn, nên phải lùi dần.
+function chonThumbnail(thumbnails) {
+  const t = thumbnails || {}
+  for (const co of ['maxres', 'standard', 'high', 'medium', 'default']) {
+    if (t[co] && t[co].url) return t[co].url
+  }
+  return ''
+}
+
+// Một dòng video thống nhất cho MỌI chỗ lấy từ videos.list (tìm kiếm, kênh
+// theo dõi, thịnh hành, radar đề xuất). Viết một chỗ để không màn nào thiếu
+// trường thumbnail hay ngôn ngữ mà màn khác có.
+function dongTuVideo(v) {
+  const sn = v.snippet || {}
+  return {
+    videoId: v.id,
+    tieuDe: sn.title || '',
+    kenhId: sn.channelId || '',
+    tenKenh: sn.channelTitle || '',
+    ngayDang: sn.publishedAt || '',
+    views: Number(v.statistics?.viewCount || 0),
+    likes: Number(v.statistics?.likeCount || 0),
+    binhLuan: Number(v.statistics?.commentCount || 0),
+    thoiLuongGiay: giayTuISO(v.contentDetails?.duration || ''),
+    lienKet: `https://www.youtube.com/watch?v=${v.id}`,
+    thumbnail: chonThumbnail(sn.thumbnails),
+    thumbnailNho: (sn.thumbnails?.medium?.url) || `https://i.ytimg.com/vi/${v.id}/mqdefault.jpg`,
+    // Ngôn ngữ THOẠI của video (chủ kênh tự khai). Rỗng = không khai — không
+    // được coi là "không phải tiếng Anh".
+    ngonNguAm: sn.defaultAudioLanguage || '',
+    ngonNgu: sn.defaultLanguage || '',
+    danhMuc: sn.categoryId || ''
+  }
+}
+
 // layJSONHam nhồi được từ ngoài để kiểm thử tầng 1 không cần mạng.
 function taoKhachHang({ layJSONHam, boDem, idKhoa, khoa, nhatKy = { tin() {}, loi() {} } }) {
   let daDungPhien = 0
@@ -109,6 +145,14 @@ function taoKhachHang({ layJSONHam, boDem, idKhoa, khoa, nhatKy = { tin() {}, lo
       // 404 KHÔNG BAO GIỜ là lỗi của khoá API. Nó nghĩa là đường dẫn sai —
       // tức là lỗi của tool. Nói thẳng ra, đừng để người dùng đi xin khoá mới
       // hay ngồi chờ reset quota vô ích.
+      // Ngoại lệ DUY NHẤT của quy tắc "404 là lỗi của tool": bảng Thịnh hành
+      // của một số danh mục không tồn tại ở một số nước. Google trả 404 kèm
+      // reason videoChartNotFound — đường dẫn vẫn đúng, chỉ là không có bảng.
+      if (loi.maHttp === 404 && than.includes('videoChartNotFound')) {
+        const e = new Error('YouTube không có bảng Thịnh hành cho danh mục này ở quốc gia đã chọn. Chọn danh mục khác hoặc "Tất cả".')
+        e.khongCoBang = true
+        throw e
+      }
       if (loi.maHttp === 404) {
         nhatKy.loi(`API ${duongDan} trả 404 — đường dẫn ${GOC}/${duongDanThat(duongDan)} không tồn tại.`)
         throw new Error(
@@ -162,20 +206,7 @@ function taoKhachHang({ layJSONHam, boDem, idKhoa, khoa, nhatKy = { tin() {}, lo
           id: lo.join(','),
           maxResults: 50
         }, 1)
-        for (const v of (kq.items || [])) {
-          ra.push({
-            videoId: v.id,
-            tieuDe: v.snippet?.title || '',
-            kenhId: v.snippet?.channelId || '',
-            tenKenh: v.snippet?.channelTitle || '',
-            ngayDang: v.snippet?.publishedAt || '',
-            views: Number(v.statistics?.viewCount || 0),
-            likes: Number(v.statistics?.likeCount || 0),
-            binhLuan: Number(v.statistics?.commentCount || 0),
-            thoiLuongGiay: giayTuISO(v.contentDetails?.duration || ''),
-            lienKet: `https://www.youtube.com/watch?v=${v.id}`
-          })
-        }
+        for (const v of (kq.items || [])) ra.push(dongTuVideo(v))
       }
       return ra
     },
@@ -194,6 +225,12 @@ function taoKhachHang({ layJSONHam, boDem, idKhoa, khoa, nhatKy = { tin() {}, lo
             tenKenh: c.snippet?.title || '',
             subKenh: Number(c.statistics?.subscriberCount || 0),
             tongVideo: Number(c.statistics?.videoCount || 0),
+            // Quốc gia chủ kênh TỰ KHAI trong phần giới thiệu. Nhiều kênh Mỹ
+            // bỏ trống, nên rỗng không có nghĩa là "không phải Mỹ".
+            quocGia: (c.snippet?.country || '').toUpperCase(),
+            // subscriberCount bị ẩn thì Google trả hiddenSubscriberCount=true
+            // và subscriberCount=0 — phải phân biệt với kênh 0 sub thật.
+            anSub: !!c.statistics?.hiddenSubscriberCount,
             playlistTaiLen: c.contentDetails?.relatedPlaylists?.uploads || ''
           })
         }
@@ -237,28 +274,26 @@ function taoKhachHang({ layJSONHam, boDem, idKhoa, khoa, nhatKy = { tin() {}, lo
       return (kq.items || []).map((m) => m.contentDetails?.videoId).filter(Boolean)
     },
 
-    // Bảng xếp hạng thịnh hành theo quốc gia. 1 đơn vị quota — rẻ hơn
-    // search.list đúng 100 lần.
+    // Bảng xếp hạng thịnh hành theo quốc gia. 1 đơn vị quota MỖI TRANG 50
+    // video — rẻ hơn search.list đúng 100 lần. Tối đa 200 video (4 trang).
     async videoThinhHanh({ regionCode = 'US', soLuong = 50, danhMuc } = {}) {
-      const kq = await goi('videos.list', {
-        part: 'snippet,statistics,contentDetails',
-        chart: 'mostPopular',
-        regionCode,
-        videoCategoryId: danhMuc,
-        maxResults: Math.min(50, soLuong)
-      }, 1)
-      return (kq.items || []).map((v) => ({
-        videoId: v.id,
-        tieuDe: v.snippet?.title || '',
-        kenhId: v.snippet?.channelId || '',
-        tenKenh: v.snippet?.channelTitle || '',
-        ngayDang: v.snippet?.publishedAt || '',
-        views: Number(v.statistics?.viewCount || 0),
-        likes: Number(v.statistics?.likeCount || 0),
-        binhLuan: Number(v.statistics?.commentCount || 0),
-        thoiLuongGiay: giayTuISO(v.contentDetails?.duration || ''),
-        lienKet: `https://www.youtube.com/watch?v=${v.id}`
-      }))
+      const ra = []
+      let trang
+      const tran = Math.min(200, Math.max(1, soLuong))
+      while (ra.length < tran) {
+        const kq = await goi('videos.list', {
+          part: 'snippet,statistics,contentDetails',
+          chart: 'mostPopular',
+          regionCode,
+          videoCategoryId: danhMuc || undefined,
+          maxResults: Math.min(50, tran - ra.length),
+          pageToken: trang
+        }, 1)
+        for (const v of (kq.items || [])) ra.push(dongTuVideo(v))
+        trang = kq.nextPageToken
+        if (!trang || !(kq.items || []).length) break
+      }
+      return ra
     },
 
     // Trung vị view của 20 video gần nhất của một kênh. 2 đơn vị quota/kênh.
@@ -290,6 +325,8 @@ function ngayTuTruoc(soNgay) {
 
 module.exports = {
   taoKhachHang,
+  dongTuVideo,
+  chonThumbnail,
   ngayTuTruoc,
   ghepURL,
   duongDanThat,

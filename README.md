@@ -11,6 +11,87 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.4.0 — thumbnail, ô tick "Video đã chọn", màn Đề xuất video, ưu tiên kênh nhỏ Mỹ
+
+**Thumbnail + ô tick ở mọi bảng kết quả** (Ý tưởng, Đề xuất video, Kênh theo dõi).
+Tick ô đầu dòng là video vào danh sách **Video đã chọn** — số đếm hiện ở thanh
+bên trái, và cả 4 màn Sản xuất đều có khối Video đã chọn với nút riêng:
+
+| Màn | Dùng video đã chọn để làm gì |
+|---|---|
+| Lời thoại | Nạp link vào ô, hoặc lấy lời thoại ngay |
+| Kịch bản | Đưa tiêu đề + số liệu vào prompt dàn ý làm "video tham khảo" (prompt dặn rõ không chép tiêu đề, không bám cấu trúc) |
+| Kiểm duyệt | Lấy lời thoại video gốc làm **bản so độ giống** — trước đây ô này có trong code nhưng giao diện luôn gửi rỗng |
+| Prompt ảnh | Tải thumbnail vào `<dự án>/anh-tham-chieu` làm ảnh tham chiếu phong cách |
+
+Danh sách lưu ở tệp **riêng** `video-da-chon.json`, không nhét vào tệp cài đặt:
+nó đổi sau mỗi cú tick, trộn chung thì mỗi cú tick lại ghi đè cả tệp cài đặt —
+một lần ghi hỏng là mất luôn khoá API.
+
+**Tải thumbnail** (từng video bằng nút ⬇ trên ảnh, hoặc cả loạt đã tick). Ảnh ở
+`i.ytimg.com`, không tốn quota. Cỡ lùi dần 1280 → 640 → 480 px vì không phải
+video nào cũng có bản 1280. Hai bẫy đã xử lý:
+
+- Video không có bản 1280px thì YouTube trả **ảnh xám 120×90** — nhiều lúc kèm
+  mã 200 chứ không phải 404. Chỉ xét mã HTTP là lưu về cả trăm ảnh xám mà không
+  ai biết. Tool xét thêm kích thước tệp.
+- Tên tệp an toàn trên Windows (bỏ `<>:"/\|?*`, bỏ dấu chấm cuối tên), đánh số
+  `001 - <tiêu đề> [mã video].jpg`.
+
+Giao diện phải mở thêm `img-src https://i.ytimg.com` trong Content-Security-Policy
+— thiếu dòng đó thì **mọi thumbnail vỡ im lặng**, không lỗi, không log. Kiểm thử
+tầng 1 soi CSP, tầng 2 kiểm từng ảnh có thật sự vẽ ra không (`naturalWidth`).
+
+**Màn Đề xuất video, hai thẻ:**
+
+- **Radar đề xuất (trình duyệt).** YouTube Data API không cho biết video nào
+  đang được thuật toán đẩy. Radar đọc chính giao diện YouTube: tìm theo từ khóa
+  lĩnh vực trên trang tìm kiếm thật (không tốn quota), lấy các video nhiều view
+  nhất làm hạt giống, mở từng video bằng một cửa sổ ẩn **đã tắt tiếng**, đọc cột
+  "video tiếp theo", cộng thêm trang chủ của tài khoản. Video được gợi ý cạnh
+  **nhiều** hạt giống khác nhau = đang được đẩy mạnh (nhãn **ĐẨY MẠNH** khi có
+  mặt ở ≥ 35% số nguồn, ít nhất 3). Quota chỉ ~2 đơn vị/50 video để ghép số view
+  và sub; không có khoá API vẫn chạy được, chỉ thiếu sub và view/giờ.
+  Dữ liệu đọc từ khối `ytInitialData` YouTube nhúng sẵn trong trang (đọc cả dạng
+  renderer cũ lẫn `lockupViewModel` mới), có đường lùi đọc thẳng link trên trang
+  nếu YouTube đổi cấu trúc.
+- **Đang hot (API).** Bảng Thịnh hành Mỹ theo danh mục (1 đơn vị/50 video, tối
+  đa 200) và tìm video **đang lên 72 giờ** theo từ khóa lĩnh vực.
+
+**Mặc định Mỹ và ưu tiên kênh vừa & nhỏ.**
+
+- Gợi ý từ khóa thêm `gl=us`. Trước đây chỉ có `hl=en` — Google trả gợi ý tiếng
+  Anh nhưng **theo vị trí thật của máy**, tức là theo người xem Việt Nam.
+- Radar mở mọi trang với `hl=en&gl=US`.
+- Bỏ video khai ngôn ngữ thoại khác tiếng Anh; trừ 0,4 điểm kênh khai quốc gia
+  khác Mỹ. Kênh **để trống** hai mục này thì không bị trừ — rất nhiều kênh Mỹ
+  không điền.
+- Kênh **1.000–100.000 sub** được +0,5 điểm, kênh lớn hơn −0,6, dưới 1.000 −0,2,
+  kênh ẩn sub không cộng không trừ. Là cộng/trừ điểm chứ không loại hẳn (có công
+  tắc loại hẳn trong Cài đặt). Có nút lọc nhanh "Chỉ kênh vừa & nhỏ".
+- Khoá cài đặt cũ `subToiDaTrieu` bị bỏ khi đọc: ô sửa nó không còn trên giao
+  diện, để nguyên là nó **lọc ngầm** kết quả mà không ai biết vì sao.
+
+**Hai lỗi bắt được trong lúc làm:**
+
+- `404` của bảng Thịnh hành khi danh mục không có bảng ở Mỹ (`videoChartNotFound`)
+  sẽ bị luật "404 là lỗi của tool" (từ bản 0.3.1) dịch nhầm thành lỗi của tool.
+  Nay nhận riêng mã này và bảo chọn danh mục khác.
+- Radar: từ khóa "bible **stories**" không khớp tiêu đề có "bible **story**" vì
+  chỉ xử lý thêm "s" vào cuối từ. Nay so theo gốc từ (`stories → story`). Ca
+  kiểm thử bắt được trước khi giao.
+
+**Màn Trình duyệt** nay có khối giải thích nó nối với các màn khác thế nào, kèm
+nút mở nhanh YouTube (Mỹ), claude.ai và sang Radar. Bấm thumbnail ở bất kỳ bảng
+nào là video mở ngay trong trình duyệt của tool.
+
+**Giới hạn phải nói thẳng:** API **không** cho biết khán giả của kênh người khác
+ở nước nào — tool chỉ dùng được các dấu hiệu gần nhất (tìm theo khu vực Mỹ, gợi
+ý theo người xem Mỹ, ngôn ngữ và quốc gia chủ kênh tự khai). Radar phụ thuộc giao
+diện YouTube: YouTube đổi cấu trúc trang là phải sửa, và mở nhiều trang liên tục
+có thể bị hỏi xác minh — tool dừng lại, báo rõ và bảo mở màn Trình duyệt để xác
+minh bằng tay.
+
 ### 0.3.1 — sửa lỗi làm màn Ý tưởng tìm gì cũng ra 0 video
 
 Từ bản 0.1.0 tới 0.3.0, **màn Ý tưởng chưa bao giờ tìm được video nào**. Mọi
@@ -291,8 +372,8 @@ mới** trong app tự thấy bản mới.
 
 | Tầng | Lệnh | Bắt được gì |
 |---|---|---|
-| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel |
-| 2. Giao diện | `YT_SMOKE=1 npx electron --no-sandbox .` | thiếu màn, thiếu phần tử, **thiếu khoá cài đặt**, lớp phủ che giao diện; chụp ảnh từng màn vào `shots/` |
+| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu) |
+| 2. Giao diện | `YT_SMOKE=1 npx electron --no-sandbox .` | thiếu màn, thiếu phần tử, **thiếu khoá cài đặt**, lớp phủ che giao diện, **thumbnail có vẽ ra không**; nạp dữ liệu mẫu rồi chụp ảnh từng màn vào `shots/` |
 
 Tầng 2 chụp ảnh xong **phải mở ảnh ra xem bằng mắt**. Nút bị cắt, chữ vỡ dấu,
 khoảng trống lệch — không thứ nào ném exception.
@@ -308,6 +389,10 @@ triển không có. Không được hiểu là "đã chạy tốt":
 - Gợi ý autocomplete với **mạng thật**
 - Bản `.exe` trên **Windows thật** và bản `.dmg` trên **macOS thật**
 - Tính năng tự cập nhật (chỉ chạy được khi đã đóng gói và đã có Release)
+- **Radar đề xuất trên YouTube thật** — tầng 1 chạy bằng dữ liệu `ytInitialData`
+  mẫu dựng theo cấu trúc YouTube đang dùng; cấu trúc thật có thể lệch, và chưa
+  biết YouTube có hỏi xác minh sau bao nhiêu trang
+- Tải thumbnail từ `i.ytimg.com` thật (tầng 1 dùng hàm mạng giả)
 
 Khi có lỗi: mở màn **Nhật ký**, gửi nguyên file log. **Dòng cuối cùng** định vị
 chính xác chỗ chết — ảnh chụp màn hình thường không đủ.

@@ -12,7 +12,7 @@ const nhatKy = require('./src/nhat-ky')
 const { taoKho } = require('./src/store')
 const { taoBoDem, uocChiPhi } = require('./src/quota')
 const { ghepTuKhoa } = require('./src/tu-khoa')
-const { layGoiY, layJSON } = require('./src/goi-mang')
+const { layGoiY, layJSON, layNhiPhan } = require('./src/goi-mang')
 const { timYTuong } = require('./src/tim-y-tuong')
 const { xuatExcel } = require('./src/xuat-excel')
 const { taoKhachHang } = require('./src/youtube-api')
@@ -25,6 +25,11 @@ const promptAnh = require('./src/prompt-anh')
 const { taoKhoDuAn } = require('./src/du-an')
 const trinhDuyet = require('./src/trinh-duyet')
 const docTep = require('./src/doc-tep')
+const thumbnail = require('./src/thumbnail')
+const videoDaChon = require('./src/video-da-chon')
+const { chayRadar, ghepSoLieuApi } = require('./src/chay-radar')
+const radar = require('./src/radar-de-xuat')
+const chamDiem = require('./src/cham-diem')
 
 const LA_SMOKE = !!process.env.YT_SMOKE
 let cuaSo = null
@@ -254,7 +259,11 @@ function dangKyIPC() {
     nhatKy.tin(`Ghép từ khóa từ: ${chuNhap}`)
     const cache = kho.docCache()
     const kq = await ghepTuKhoa(chuNhap, {
-      layGoiYHam: (cum) => layGoiY(cum, { hl: 'en' }),
+      // Gợi ý theo người xem MỸ (gl=us), không theo vị trí thật của máy.
+      layGoiYHam: (cum) => layGoiY(cum, {
+        hl: 'en',
+        gl: String(kho.docCaiDat().regionCode || 'US').toLowerCase()
+      }),
       soLuong: soLuong || 5,
       lichSu: cache.muc || {},
       baoTienDo: (t) => baoTienDo({ ...t, khu: 'tukhoa' })
@@ -265,8 +274,10 @@ function dangKyIPC() {
 
   ipcMain.handle('quota:uoc', (_su, thamSo) => uocChiPhi(thamSo))
 
-  ipcMain.handle('ytuong:tim', async (_su, { tuKhoa }) => {
-    const caiDat = kho.docCaiDat()
+  // ghiDe: màn Đề xuất dùng lại đúng hàm này để tìm video "đang lên 72 giờ"
+  // (soNgay = 3) mà không đụng tới cài đặt của màn Ý tưởng.
+  ipcMain.handle('ytuong:tim', async (_su, { tuKhoa, ghiDe }) => {
+    const caiDat = { ...kho.docCaiDat(), ...(ghiDe || {}) }
     const can = uocChiPhi({
       soTuKhoa: tuKhoa.length,
       soVideoMoiTuKhoa: caiDat.soVideoMoiTuKhoa,
@@ -279,7 +290,7 @@ function dangKyIPC() {
     try {
       const kq = await timYTuong({
         tuKhoa, caiDat, khoa, boDem, layJSONHam: layJSON, nhatKy,
-        baoTienDo: (t) => baoTienDo({ ...t, khu: 'ytuong' })
+        baoTienDo: (t) => baoTienDo({ ...t, khu: ghiDe ? 'dexuat' : 'ytuong' })
       })
       const cache = kho.docCache()
       cache.muc = cache.muc || {}
@@ -375,6 +386,151 @@ function dangKyIPC() {
       baoTienDo({ phanTram: 100, viec: 'Xong', chiTiet: `${dong.length} video`, trangThai: 'xong', khu: 'kenh' })
       return { ok: true, dong }
     } catch (e) {
+      return { ok: false, loi: e.message, laLoiQuota: !!e.laLoiQuota }
+    }
+  })
+
+
+  // --- Video đã chọn (dùng chung cho mọi màn) -----------------------------
+  ipcMain.handle('chon:doc', () => videoDaChon.doc(kho.thuMuc))
+  ipcMain.handle('chon:ghi', (_su, { ds }) => videoDaChon.ghi(kho.thuMuc, ds))
+
+  // --- Tải thumbnail ---------------------------------------------------------
+  // duAnMa có thì lưu vào <dự án>/anh-tham-chieu (màn Prompt ảnh), không thì
+  // hỏi thư mục. Ảnh ở i.ytimg.com: KHÔNG tốn quota API.
+  ipcMain.handle('thumb:tai', async (_su, { videos, duAnMa }) => {
+    const ds = (videos || []).filter(videoDaChon.hopLe)
+    if (!ds.length) return { ok: false, loi: 'Chưa có video nào để tải thumbnail.' }
+
+    let thuMuc
+    if (duAnMa) {
+      thuMuc = path.join(khoDuAn.duongDan(duAnMa), 'anh-tham-chieu')
+    } else {
+      const { canceled, filePaths } = await dialog.showOpenDialog(cuaSo, {
+        title: `Chọn thư mục lưu ${ds.length} thumbnail`,
+        defaultPath: app.getPath('downloads'),
+        properties: ['openDirectory', 'createDirectory']
+      })
+      if (canceled || !filePaths.length) return { ok: false, huy: true }
+      thuMuc = filePaths[0]
+    }
+
+    const kq = await thumbnail.taiNhieuThumbnail(ds, thuMuc, {
+      layNhiPhanHam: layNhiPhan,
+      baoTienDo: (t) => baoTienDo({ ...t, khu: 'thumbnail' })
+    })
+    baoTienDo({
+      phanTram: 100, viec: 'Tải thumbnail xong',
+      chiTiet: `${kq.ketQua.length}/${ds.length} ảnh · ${thuMuc}`,
+      soLoi: kq.loi.length, trangThai: kq.loi.length ? 'loi' : 'xong', khu: 'thumbnail'
+    })
+    nhatKy.tin(`Tải thumbnail: ${kq.ketQua.length}/${ds.length} ảnh vào ${thuMuc}`)
+    for (const l of kq.loi) nhatKy.loi(`Thumbnail ${l.videoId}: ${l.loi}`)
+    return { ok: kq.ketQua.length > 0, thuMuc, soTai: kq.ketQua.length, loi: kq.loi }
+  })
+
+  // --- Đề xuất video: Radar (đọc giao diện YouTube bằng cửa sổ ẩn) ----------
+  let dangChayRadar = false
+  ipcMain.handle('dexuat:radar', async (_su, thamSo = {}) => {
+    if (dangChayRadar) return { ok: false, loi: 'Radar đang chạy rồi — chờ lượt này xong đã.' }
+    const caiDat = kho.docCaiDat()
+    const {
+      tuKhoa = '', taiKhoanId = '', dungVideoDaChon = false,
+      soHatGiong = caiDat.soVideoHatGiong || 8,
+      docTrangChu = caiDat.radarDocTrangChu !== false,
+      thoiGian = caiDat.radarThoiGian || 'thang'
+    } = thamSo
+
+    const hatGiongCo = dungVideoDaChon ? videoDaChon.doc(kho.thuMuc).map((v) => v.videoId) : []
+    if (!String(tuKhoa).trim() && !hatGiongCo.length && !docTrangChu) {
+      return { ok: false, loi: 'Nhập từ khóa lĩnh vực, hoặc bật "dùng video đã chọn làm hạt giống".' }
+    }
+
+    dangChayRadar = true
+    const trinhDoc = quanLyDuyet.taoTrinhDoc(taiKhoanId)
+    nhatKy.tin(`Radar bắt đầu: "${tuKhoa}" · tài khoản ${taiKhoanId || 'khách'} · ${soHatGiong} hạt giống`)
+    try {
+      const kq = await chayRadar({
+        tuKhoaLinhVuc: tuKhoa,
+        docTrang: (url, tuyChon) => trinhDoc.doc(url, tuyChon),
+        soHatGiong: Math.max(2, Math.min(20, Number(soHatGiong) || 8)),
+        hatGiongCo,
+        timTrenYouTube: !!String(tuKhoa).trim(),
+        docTrangChu,
+        thoiGian,
+        nhatKy,
+        baoTienDo: (t) => baoTienDo({ ...t, khu: 'dexuat' })
+      })
+
+      // Ghép số liệu API cho 150 video đứng đầu: 2 đơn vị mỗi 50 video
+      // (videos.list + channels.list). Không có khoá thì vẫn trả bảng radar.
+      let dong = kq.dong
+      let ghiChuApi = ''
+      const top = dong.slice(0, 150)
+      const can = Math.ceil(top.length / 50) * 2
+      const { khach, loi } = top.length ? taoKhachCoKhoa(can) : { loi: 'không có video' }
+      if (khach) {
+        baoTienDo({ phanTram: 96, viec: 'Lấy số liệu video (API)', chiTiet: `${top.length} video · ~${can} đơn vị`, khu: 'dexuat' })
+        try {
+          const api = await khach.soLieuVideo(top.map((d) => d.videoId))
+          const bangKenh = await khach.soLieuKenh(api.map((d) => d.kenhId))
+          dong = [...ghepSoLieuApi(top, api, bangKenh, caiDat), ...dong.slice(150)]
+          ghiChuApi = `Đã ghép số liệu API (${khach.daDungPhien()} đơn vị quota).`
+        } catch (e) {
+          ghiChuApi = `Không ghép được số liệu API: ${e.message}`
+          nhatKy.canhBao('Radar: ' + ghiChuApi)
+        }
+      } else {
+        ghiChuApi = `Chưa ghép số liệu API (${loi}) — view là số ƯỚC đọc từ trang YouTube, chưa có sub và view/giờ.`
+      }
+
+      baoTienDo({
+        phanTram: 100, viec: 'Radar xong',
+        chiTiet: `${dong.length} video · ${dong.filter((d) => d.nhanDeXuat === 'ĐẨY MẠNH').length} đẩy mạnh`,
+        soLoi: kq.canhBao.length, trangThai: 'xong', khu: 'dexuat'
+      })
+      nhatKy.tin(`Radar xong: ${dong.length} video từ ${kq.cacLanDoc.length} nguồn. ${ghiChuApi}`)
+      return { ok: true, ...kq, dong, ghiChuApi, soNguon: kq.cacLanDoc.length }
+    } catch (e) {
+      nhatKy.loi('Radar lỗi: ' + e.message)
+      baoTienDo({ phanTram: 100, viec: 'Radar lỗi', chiTiet: e.message, soLoi: 1, trangThai: 'loi', khu: 'dexuat' })
+      return { ok: false, loi: e.message }
+    } finally {
+      trinhDoc.dong()
+      dangChayRadar = false
+    }
+  })
+
+  // --- Đề xuất video: bảng Thịnh hành theo danh mục (API) -------------------
+  ipcMain.handle('dexuat:hot', async (_su, { danhMuc = '', soLuong = 100, tuKhoaLoc = '' } = {}) => {
+    const caiDat = kho.docCaiDat()
+    const soTrang = Math.ceil(Math.min(200, Math.max(50, soLuong)) / 50)
+    // soTrang cho videos.list + tối đa soTrang cho channels.list
+    const { khach, loi } = taoKhachCoKhoa(soTrang * 2)
+    if (loi) return { ok: false, loi }
+    try {
+      baoTienDo({ phanTram: 20, viec: 'Lấy bảng Thịnh hành Mỹ', chiTiet: danhMuc ? `danh mục ${danhMuc}` : 'tất cả', khu: 'dexuat' })
+      let dong = await khach.videoThinhHanh({ regionCode: caiDat.regionCode || 'US', soLuong, danhMuc })
+      baoTienDo({ phanTram: 60, viec: 'Lấy số liệu kênh', chiTiet: `${dong.length} video`, khu: 'dexuat' })
+      const bangKenh = await khach.soLieuKenh(dong.map((d) => d.kenhId))
+      for (const d of dong) {
+        const k = bangKenh.get(d.kenhId)
+        d.subKenh = k ? k.subKenh : 0
+        d.quocGia = k ? k.quocGia : ''
+        d.anSub = k ? k.anSub : false
+      }
+      const truoc = dong.length
+      dong = chamDiem.locVideo(dong, { ...caiDat, viewToiThieu: 0 })
+      const tuLinhVuc = radar.tachTuLinhVuc(tuKhoaLoc)
+      for (const d of dong) d.khopLinhVuc = radar.khopLinhVuc(d.tieuDe, tuLinhVuc)
+      dong = chamDiem.chamDiem(dong, { caiDat })
+      baoTienDo({
+        phanTram: 100, viec: 'Bảng Thịnh hành xong',
+        chiTiet: `${dong.length}/${truoc} video sau lọc · ${khach.daDungPhien()} đơn vị`, trangThai: 'xong', khu: 'dexuat'
+      })
+      return { ok: true, dong, truocLoc: truoc, quotaDaDung: khach.daDungPhien() }
+    } catch (e) {
+      baoTienDo({ phanTram: 100, viec: 'Bảng Thịnh hành lỗi', chiTiet: e.message, soLoi: 1, trangThai: 'loi', khu: 'dexuat' })
       return { ok: false, loi: e.message, laLoiQuota: !!e.laLoiQuota }
     }
   })
@@ -863,6 +1019,19 @@ function dangKyIPC() {
     const id = quanLyDuyet.moTab({ taiKhoanId, url })
     return { ok: true, tabId: id }
   })
+  // Mở nhanh một link trong trình duyệt của app (bấm thumbnail ở các bảng).
+  // Có tab đang hiện thì đi tới đó; chưa có thì mở tab mới bằng tài khoản đầu
+  // tiên, không có tài khoản nào thì bằng phiên khách.
+  ipcMain.handle('duyet:mo-nhanh', (_su, { url }) => {
+    if (!trinhDuyet.duocPhepMo(url)) return { ok: false }
+    const tt = quanLyDuyet.trangThai()
+    if (tt.tabDangHien) {
+      quanLyDuyet.dieuHuong(tt.tabDangHien, url)
+      return { ok: true, tabId: tt.tabDangHien }
+    }
+    const ds = kho.docCaiDat().taiKhoan || []
+    return { ok: true, tabId: quanLyDuyet.moTab({ taiKhoanId: ds.length ? ds[0].id : 'khach', url }) }
+  })
   ipcMain.handle('duyet:chon-tab', (_su, { tabId }) => ({ ok: quanLyDuyet.chonTab(tabId) }))
   ipcMain.handle('duyet:dong-tab', (_su, { tabId }) => ({ ok: quanLyDuyet.dongTab(tabId) }))
   ipcMain.handle('duyet:dieu-huong', (_su, { tabId, url }) => ({ ok: quanLyDuyet.dieuHuong(tabId, url) }))
@@ -985,8 +1154,14 @@ async function chaySmoke() {
   fs.mkdirSync(thuMucAnh, { recursive: true })
   nhatKy.tin(`Smoke ghi ảnh vào: ${thuMucAnh}`)
 
-  const cacMan = ['y-tuong', 'kenh', 'loi-thoai', 'kich-ban', 'kiem-duyet', 'prompt-anh', 'trinh-duyet', 'cai-dat', 'huong-dan', 'nhat-ky']
+  const cacMan = ['y-tuong', 'de-xuat', 'kenh', 'loi-thoai', 'kich-ban', 'kiem-duyet', 'prompt-anh', 'trinh-duyet', 'cai-dat', 'huong-dan', 'nhat-ky']
   const thieu = []
+
+  // Nạp dữ liệu mẫu TRƯỚC khi chụp: bảng trống thì ảnh chụp không cho biết
+  // thumbnail có hiện không, ô tick có lệch không.
+  const mau = await cuaSo.webContents.executeJavaScript('window.smokeDuLieuMau()')
+    .catch((e) => ({ loi: e.message }))
+  nhatKy.tin('Smoke: dữ liệu mẫu — ' + JSON.stringify(mau))
 
   for (const man of cacMan) {
     const ok = await cuaSo.webContents.executeJavaScript(`window.smokeMoMan('${man}')\n;undefined;`)
@@ -1003,7 +1178,11 @@ async function chaySmoke() {
   const khoiDuoiTamNhin = [
     ['cai-dat', '#gioi-han-cap-nhat', 'cai-dat-cap-nhat'],
     ['prompt-anh', '#o-mo-ta-tra-ve', 'prompt-anh-mo-ta'],
-    ['kich-ban', '#danh-sach-phan', 'kich-ban-cac-phan']
+    ['kich-ban', '#danh-sach-phan', 'kich-ban-cac-phan'],
+    ['y-tuong', '#bang-ket-qua', 'y-tuong-bang'],
+    ['de-xuat', '#bang-radar', 'de-xuat-bang-radar'],
+    ['trinh-duyet', '#the-cong-dung-duyet', 'trinh-duyet-cong-dung'],
+    ['cai-dat', '[data-khoa="subToiThieu"]', 'cai-dat-kenh-my']
   ]
   for (const [man, chon, tenAnh] of khoiDuoiTamNhin) {
     await cuaSo.webContents.executeJavaScript(`window.smokeMoMan('${man}')\n;undefined;`).catch(() => {})
@@ -1033,7 +1212,16 @@ async function chaySmoke() {
     // 0.3.0: chế độ chạy độc lập, nạp tệp Word, mô tả cảnh hai kiểu, tự cập nhật
     '#nhap-link-nhanh', '#nut-lay-nhanh', '#nut-mo-tep-loi-thoai', '#o-loi-thoai-nhanh',
     '#o-kich-ban-anh', '#nut-mo-tep-anh', '#o-kieu-mo-ta',
-    '#nut-tai-ban-moi', '#nut-cai-ban-moi', '#day-cap-nhat'
+    '#nut-tai-ban-moi', '#nut-cai-ban-moi', '#day-cap-nhat',
+    // 0.4.0: thumbnail + tick, Video đã chọn, Đề xuất video, công dụng trình duyệt
+    '#hop-da-chon', '#so-da-chon', '#nut-tai-thumb-y-tuong',
+    '#bang-ket-qua .tick-tat-ca', '#bang-ket-qua .tick-video', '#bang-ket-qua .o-thumb img',
+    '#nhap-linh-vuc', '#nut-chay-radar', '#chon-tai-khoan-radar', '#bang-radar', '#nut-lay-hot', '#nut-tim-72h', '#bang-hot',
+    '.hop-video-chon[data-man="loi-thoai"] .the-video-chon',
+    '.hop-video-chon[data-man="kich-ban"] #o-dung-video-tham-khao',
+    '.hop-video-chon[data-man="kiem-duyet"] .hang-hanh-dong button',
+    '.hop-video-chon[data-man="prompt-anh"] .hang-hanh-dong button',
+    '#o-ban-goc', '#the-cong-dung-duyet', '#nut-sang-radar'
   ]
   const thieuPhanTu = await cuaSo.webContents.executeJavaScript(`
     (function () {
@@ -1056,11 +1244,24 @@ async function chaySmoke() {
     })()
   `)
 
-  const ketQua = { thieuMan: thieu, thieuPhanTu, thieuKhoaCaiDat: thieuKhoa, bicHe }
+  // Ảnh thumbnail có THẬT SỰ vẽ ra không (CSP chặn img-src là ảnh vỡ im lặng,
+  // không exception nào). naturalWidth = 0 nghĩa là ảnh không tải được.
+  const anhVo = await cuaSo.webContents.executeJavaScript(`
+    (function () {
+      window.smokeMoMan('y-tuong');
+      var cac = document.querySelectorAll('#bang-ket-qua .o-thumb img');
+      var vo = 0;
+      for (var i = 0; i < cac.length; i++) if (!cac[i].complete || cac[i].naturalWidth === 0) vo++;
+      return { tong: cac.length, vo: vo };
+    })()
+  `)
+
+  const ketQua = { thieuMan: thieu, thieuPhanTu, thieuKhoaCaiDat: thieuKhoa, bicHe, anhThumbnail: anhVo }
   fs.writeFileSync(path.join(thuMucAnh, 'ket-qua-smoke.json'), JSON.stringify(ketQua, null, 2))
   nhatKy.tin('Smoke kết quả:', JSON.stringify(ketQua))
 
-  const vo = thieu.length || thieuPhanTu.length || (thieuKhoa && thieuKhoa.length) || bicHe.bi
+  const vo = thieu.length || thieuPhanTu.length || (thieuKhoa && thieuKhoa.length) || bicHe.bi ||
+    !anhVo.tong || anhVo.vo > 0
   app.exit(vo ? 1 : 0)
 }
 

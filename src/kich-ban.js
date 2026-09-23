@@ -55,6 +55,27 @@ function taoPromptDanY({ skill = '', loiThoai = '', yeuCau = {} } = {}) {
     loiThoai.trim() || '(chưa có lời thoại — viết dựa trên yêu cầu bên dưới)'
   ].join('\n'))
 
+  // Video đã chọn ở màn Ý tưởng / Đề xuất: đưa vào như TÍN HIỆU THỊ TRƯỜNG
+  // (chủ đề nào đang được xem), không phải khuôn để chép. Nói rõ điều đó trong
+  // prompt — nội dung bám sát một video khác là đúng thứ YouTube không cho
+  // bật tiền.
+  const thamKhao = Array.isArray(y.videoThamKhao) ? y.videoThamKhao.filter((v) => v && v.tieuDe) : []
+  if (thamKhao.length) {
+    khoi.push([
+      '===== VIDEO THAM KHẢO ĐANG CHẠY TỐT TRONG LĨNH VỰC (khán giả Mỹ) =====',
+      'Đây là các video đang được xem nhiều / được đề xuất mạnh. Dùng để hiểu người xem',
+      'đang quan tâm GÓC NÀO của chủ đề. TUYỆT ĐỐI không chép tiêu đề, không bám cấu trúc',
+      'của video nào — dàn ý phải có góc nhìn và trình tự riêng.',
+      '',
+      ...thamKhao.slice(0, 15).map((v, i) => {
+        const phu = [v.tenKenh, v.views ? `${Number(v.views).toLocaleString('en-US')} views` : '',
+          v.subKenh ? `${Number(v.subKenh).toLocaleString('en-US')} subs` : '', v.phut ? `${v.phut} min` : '']
+          .filter(Boolean).join(' · ')
+        return `${i + 1}. "${v.tieuDe}"${phu ? ' — ' + phu : ''}`
+      })
+    ].join('\n'))
+  }
+
   khoi.push([
     '===== VIỆC CẦN LÀM: CHỈ DÀN Ý, CHƯA VIẾT KỊCH BẢN =====',
     `Lập dàn ý ${y.soPhan} phần cho một kịch bản ${y.soTuMucTieu.toLocaleString('vi-VN')} từ bằng ${y.ngonNgu}.`,

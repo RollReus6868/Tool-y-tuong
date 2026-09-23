@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: https://i.ytimg.com https://i1.ytimg.com https://i2.ytimg.com https://i3.ytimg.com https://i4.ytimg.com https://i9.ytimg.com https://yt3.ggpht.com">
 <title>Tool Ý Tưởng</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -23,6 +23,7 @@
     <nav id="menu">
       <div class="nhom-menu">Nghiên cứu</div>
       <button class="muc" data-man="y-tuong"><span class="ico">◈</span> Ý tưởng</button>
+      <button class="muc" data-man="de-xuat"><span class="ico">✦</span> Đề xuất video</button>
       <button class="muc" data-man="kenh"><span class="ico">◎</span> Kênh theo dõi</button>
       <button class="muc" data-man="trinh-duyet"><span class="ico">◐</span> Trình duyệt</button>
 
@@ -37,6 +38,12 @@
       <button class="muc" data-man="huong-dan"><span class="ico">?</span> Hướng dẫn</button>
       <button class="muc" data-man="nhat-ky"><span class="ico">▤</span> Nhật ký</button>
     </nav>
+
+    <div id="hop-da-chon" title="Video anh đã tick ở màn Ý tưởng / Đề xuất / Kênh theo dõi — dùng được ở cả 4 màn Sản xuất">
+      <div class="quota-nhan">Video đã chọn</div>
+      <div id="so-da-chon">0 video</div>
+      <div class="quota-phu">dùng ở Lời thoại · Kịch bản · Kiểm duyệt · Prompt ảnh</div>
+    </div>
 
     <div id="quota-hop">
       <div class="quota-nhan">Quota API hôm nay</div>
@@ -84,6 +91,7 @@
             <span id="tom-tat-ket-qua" class="ghi-chu"></span>
           </div>
           <div class="hang-nut">
+            <button id="nut-tai-thumb-y-tuong" class="nut nut-phu">Tải thumbnail video đã tick</button>
             <button id="nut-xuat-excel" class="nut nut-xanh">Xuất Excel</button>
           </div>
         </div>
@@ -91,8 +99,144 @@
           <button class="chip chip-chon" data-loc="tat-ca">Tất cả</button>
           <button class="chip" data-loc="NỔ VIEW">Chỉ NỔ VIEW</button>
           <button class="chip" data-loc="TỐT">TỐT trở lên</button>
+          <button class="chip" data-loc="VUA-NHO">Chỉ kênh vừa &amp; nhỏ</button>
         </div>
+        <p class="ghi-chu goi-y-tick">☑ Tick ô đầu dòng = đưa video vào <b>Video đã chọn</b> (dùng được ở cả 4 màn Sản xuất).
+          Bấm vào <b>thumbnail</b> để mở video ngay trong trình duyệt của tool; bấm <b>tiêu đề</b> để mở bằng trình duyệt ngoài.</p>
         <div class="cuon-bang"><table id="bang-ket-qua"></table></div>
+      </div>
+    </section>
+
+    <!-- ---------- ĐỀ XUẤT VIDEO ---------- -->
+    <section class="man" id="man-de-xuat">
+      <h1>Đề xuất video — video đang được YouTube đẩy mạnh trong lĩnh vực</h1>
+      <p class="dan">Hai cách nhìn khác nhau, nên tách thành hai thẻ. <b>Radar đề xuất</b> đọc chính giao diện YouTube
+        (cột "video tiếp theo" và trang chủ) để xem thuật toán đang <b>gợi ý</b> video nào — gần như không tốn quota.
+        <b>Đang hot (API)</b> là bảng Thịnh hành Mỹ theo danh mục — nhanh, nhưng đó là "đang nhiều view", chưa chắc
+        là "đang được đề xuất".</p>
+
+      <div class="the">
+        <label class="nhan" for="nhap-linh-vuc">Lĩnh vực của anh — từ khóa tiếng Anh, cách nhau bằng dấu phẩy</label>
+        <input id="nhap-linh-vuc" class="o-dai" placeholder="bible stories, old testament, biblical history">
+        <div class="the-tab">
+          <button class="tab-de-xuat tab-de-xuat-chon" data-tab="radar">✦ Radar đề xuất (trình duyệt)</button>
+          <button class="tab-de-xuat" data-tab="hot">▲ Đang hot (API)</button>
+        </div>
+      </div>
+
+      <div id="khoi-radar" class="khoi-tab">
+        <div class="the the-doc-lap">
+          <label class="nhan">Radar đề xuất</label>
+          <div class="luoi-cai-dat">
+            <label>Đọc bằng tài khoản
+              <select id="chon-tai-khoan-radar"></select></label>
+            <label>Số video hạt giống
+              <input type="number" id="o-so-hat-giong" min="2" max="20" value="8"></label>
+            <label>Hạt giống lấy video đăng trong
+              <select id="o-radar-thoi-gian">
+                <option value="tuan">1 tuần qua</option>
+                <option value="thang">1 tháng qua</option>
+                <option value="nam">1 năm qua</option>
+              </select></label>
+            <label class="o-danh-dau"><input type="checkbox" id="o-radar-trang-chu" checked> Đọc thêm trang chủ của tài khoản</label>
+            <label class="o-danh-dau"><input type="checkbox" id="o-radar-da-chon"> Dùng video đã chọn làm hạt giống</label>
+          </div>
+          <div class="hang-nut">
+            <button id="nut-chay-radar" class="nut nut-chinh nut-to">Chạy radar</button>
+            <span id="ghi-chu-radar" class="ghi-chu">Mở ngầm ~10–15 trang YouTube, mất khoảng 1–2 phút. Quota: chỉ ~2 đơn vị/50 video để lấy số view và sub.</span>
+          </div>
+          <details class="giai-thich">
+            <summary>Radar đo "được đề xuất mạnh" thế nào?</summary>
+            <ol class="danh-sach-buoc">
+              <li>Tìm trên YouTube theo từ khóa lĩnh vực (trang tìm kiếm thật, <b>không tốn quota</b>), lấy các video
+                nhiều view nhất làm <b>hạt giống</b>.</li>
+              <li>Mở từng hạt giống bằng một cửa sổ ẩn (đã tắt tiếng), đọc cột <b>video tiếp theo</b> YouTube gợi ý bên cạnh.</li>
+              <li>Video nào được gợi ý cạnh <b>nhiều</b> hạt giống khác nhau = thuật toán đang đẩy nó trong lĩnh vực này.
+                Gợi ý cạnh 6/8 video hàng đầu khác hẳn với chỉ hiện một lần.</li>
+              <li>Trang chủ của tài khoản đã đăng nhập là YouTube gợi ý <b>thẳng</b> cho tài khoản đó — nặng gấp rưỡi.
+                Tài khoản càng xem nhiều video trong lĩnh vực, trang chủ càng đúng lĩnh vực.</li>
+            </ol>
+            <p class="ghi-chu">Mọi trang đều mở với <code>gl=US&amp;hl=en</code> — YouTube trả đề xuất theo người xem Mỹ,
+              không theo vị trí thật của máy. Đề xuất vẫn phụ thuộc lịch sử xem của tài khoản; không đăng nhập thì là đề xuất chung.</p>
+          </details>
+        </div>
+
+        <div class="the" id="the-ket-qua-radar" hidden>
+          <div class="hang-dau-bang">
+            <div><span class="nhan">Kết quả radar</span> <span id="tom-tat-radar" class="ghi-chu"></span></div>
+            <div class="hang-nut">
+              <button id="nut-tai-thumb-radar" class="nut nut-phu">Tải thumbnail video đã tick</button>
+            </div>
+          </div>
+          <div class="loc-nhanh">
+            <button class="chip chip-radar chip-chon" data-loc="tat-ca">Tất cả</button>
+            <button class="chip chip-radar" data-loc="ĐẨY MẠNH">Chỉ ĐẨY MẠNH</button>
+            <button class="chip chip-radar" data-loc="KHOP">Chỉ khớp lĩnh vực</button>
+            <button class="chip chip-radar" data-loc="VUA-NHO">Chỉ kênh vừa &amp; nhỏ</button>
+          </div>
+          <div id="canh-bao-radar" class="ghi-chu ghi-chu-vang"></div>
+          <div class="cuon-bang"><table id="bang-radar"></table></div>
+        </div>
+      </div>
+
+      <div id="khoi-hot" class="khoi-tab" hidden>
+        <div class="the">
+          <label class="nhan">Bảng Thịnh hành Mỹ theo danh mục</label>
+          <div class="luoi-cai-dat">
+            <label>Danh mục
+              <select id="o-danh-muc">
+                <option value="">Tất cả</option>
+                <option value="27">Giáo dục</option>
+                <option value="22">Con người &amp; Blog</option>
+                <option value="24">Giải trí</option>
+                <option value="25">Tin tức &amp; Chính trị</option>
+                <option value="1">Phim &amp; Hoạt hình</option>
+                <option value="28">Khoa học &amp; Công nghệ</option>
+                <option value="19">Du lịch &amp; Sự kiện</option>
+                <option value="26">Hướng dẫn &amp; Phong cách</option>
+                <option value="23">Hài</option>
+                <option value="17">Thể thao</option>
+                <option value="20">Trò chơi</option>
+                <option value="10">Âm nhạc</option>
+              </select></label>
+            <label>Số video
+              <select id="o-so-video-hot">
+                <option value="50">50 (1 đơn vị)</option>
+                <option value="100" selected>100 (2 đơn vị)</option>
+                <option value="200">200 (4 đơn vị)</option>
+              </select></label>
+          </div>
+          <div class="hang-nut">
+            <button id="nut-lay-hot" class="nut nut-chinh">Lấy bảng Thịnh hành</button>
+            <span class="ghi-chu">Rất rẻ: 1 đơn vị mỗi 50 video (+ tương đương để lấy số sub kênh).</span>
+          </div>
+        </div>
+
+        <div class="the">
+          <label class="nhan">Video đang lên 72 giờ theo lĩnh vực</label>
+          <p class="ghi-chu">Tìm từng từ khóa lĩnh vực (tối đa 5), chỉ video đăng trong <b>3 ngày</b>, chấm điểm nổ view như màn Ý tưởng.
+            Đắt hơn: <b>100 đơn vị mỗi từ khóa</b>.</p>
+          <div class="hang-nut">
+            <button id="nut-tim-72h" class="nut nut-phu">Tìm video đang lên 72 giờ</button>
+            <span id="uoc-72h" class="ghi-chu"></span>
+          </div>
+        </div>
+
+        <div class="the" id="the-ket-qua-hot" hidden>
+          <div class="hang-dau-bang">
+            <div><span class="nhan">Kết quả</span> <span id="tom-tat-hot" class="ghi-chu"></span></div>
+            <div class="hang-nut">
+              <button id="nut-tai-thumb-hot" class="nut nut-phu">Tải thumbnail video đã tick</button>
+            </div>
+          </div>
+          <div class="loc-nhanh">
+            <button class="chip chip-hot chip-chon" data-loc="tat-ca">Tất cả</button>
+            <button class="chip chip-hot" data-loc="KHOP">Chỉ khớp lĩnh vực</button>
+            <button class="chip chip-hot" data-loc="VUA-NHO">Chỉ kênh vừa &amp; nhỏ</button>
+            <button class="chip chip-hot" data-loc="NỔ VIEW">Chỉ NỔ VIEW</button>
+          </div>
+          <div class="cuon-bang"><table id="bang-hot"></table></div>
+        </div>
       </div>
     </section>
 
@@ -129,6 +273,7 @@
             <button class="chip-kenh chip" data-loc="NỔ VIEW">Chỉ NỔ VIEW</button>
           </div>
         </div>
+        <p class="ghi-chu goi-y-tick">☑ Tick ô đầu dòng = đưa video vào <b>Video đã chọn</b>.</p>
         <div class="cuon-bang"><table id="bang-kenh"></table></div>
       </div>
     </section>
@@ -138,6 +283,37 @@
       <h1>Trình duyệt — mỗi tài khoản một phiên riêng</h1>
       <p class="dan">Mỗi tài khoản là một phiên tách biệt hoàn toàn, cookie không lẫn vào nhau.
         <b>Anh tự đăng nhập trong cửa sổ này</b> — tool không nhận, không lưu, không thấy mật khẩu.</p>
+
+      <div class="the the-sap-co" id="the-cong-dung-duyet">
+        <label class="nhan">Trình duyệt này dùng để làm gì — nó nối với các màn khác thế nào</label>
+        <div class="luoi-cong-dung">
+          <div class="cong-dung">
+            <b>1. Radar đề xuất</b>
+            <span>Màn <b>Đề xuất video</b> dùng phiên đăng nhập của tài khoản ở đây để đọc cột "video tiếp theo" và
+              trang chủ — tức là đọc đúng thứ YouTube đang gợi ý. Tài khoản xem nhiều video trong lĩnh vực của anh
+              thì radar càng đúng lĩnh vực.</span>
+          </div>
+          <div class="cong-dung">
+            <b>2. Lấy lời thoại video bị chặn</b>
+            <span>Video giới hạn độ tuổi hoặc bị hỏi "Sign in to confirm you're not a bot": màn <b>Lời thoại</b> mượn
+              cookie của tài khoản ở đây (bật trong Cài đặt), dùng xong xoá ngay.</span>
+          </div>
+          <div class="cong-dung">
+            <b>3. Dán prompt sang Claude</b>
+            <span>Màn <b>Kịch bản</b> chép prompt ra — mở claude.ai ở đây để dán, không phải chuyển qua lại cửa sổ khác.</span>
+          </div>
+          <div class="cong-dung">
+            <b>4. Xem video ngay trong tool</b>
+            <span>Bấm <b>thumbnail</b> ở bất kỳ bảng kết quả nào là video mở ngay ở đây, bằng tài khoản nghiên cứu —
+              không lẫn vào lịch sử xem của tài khoản cá nhân.</span>
+          </div>
+        </div>
+        <div class="hang-nut">
+          <button class="nut nut-phu nut-mo-nhanh" data-url="https://www.youtube.com/?hl=en&amp;gl=US">Mở YouTube (Mỹ)</button>
+          <button class="nut nut-phu nut-mo-nhanh" data-url="https://claude.ai/new">Mở claude.ai</button>
+          <button class="nut nut-phu" id="nut-sang-radar">Sang Radar đề xuất →</button>
+        </div>
+      </div>
 
       <div class="the">
         <label class="nhan">Tài khoản</label>
@@ -164,6 +340,8 @@
     <!-- ---------- LỜI THOẠI ---------- -->
     <section class="man" id="man-loi-thoai">
       <h1>Lời thoại — bóc phụ đề video gốc</h1>
+
+      <div class="the hop-video-chon" data-man="loi-thoai"></div>
 
       <div class="the the-doc-lap">
         <label class="nhan">Chế độ nhanh — không cần dự án</label>
@@ -237,6 +415,8 @@
         <div class="ghi-chu thong-tin-du-an"></div>
       </div>
 
+      <div class="the hop-video-chon" data-man="kich-ban"></div>
+
       <div class="the">
         <label class="nhan">Skill viết kịch bản</label>
         <div class="hang-nut">
@@ -285,6 +465,8 @@
         <div class="ghi-chu thong-tin-du-an"></div>
       </div>
 
+      <div class="the hop-video-chon" data-man="kiem-duyet"></div>
+
       <div class="the">
         <label class="nhan" for="o-kiem-duyet">Kịch bản cần kiểm</label>
         <div class="hang-nut">
@@ -293,6 +475,12 @@
           <span id="ghi-chu-nguon-kiem" class="ghi-chu"></span>
         </div>
         <textarea id="o-kiem-duyet" rows="10" placeholder="Dán kịch bản vào đây, hoặc lấy từ dự án, hoặc mở tệp Word/txt từ máy."></textarea>
+        <details id="chi-tiet-ban-goc">
+          <summary>Bản gốc để so độ giống (tuỳ chọn) — <span id="tom-tat-ban-goc">đang dùng lời thoại của dự án</span></summary>
+          <p class="ghi-chu">Để trống = so với lời thoại đã lưu trong dự án. Dán lời thoại video gốc vào đây, hoặc dùng nút
+            <b>"Lấy lời thoại làm bản gốc"</b> ở khối Video đã chọn phía trên.</p>
+          <textarea id="o-ban-goc" rows="6" placeholder="Lời thoại video gốc để đo % trùng cụm 5 từ"></textarea>
+        </details>
         <div class="hang-nut">
           <button id="nut-kiem-duyet" class="nut nut-chinh nut-to">Kiểm duyệt</button>
           <button id="nut-xuat-bao-cao" class="nut nut-xanh">Xuất báo cáo HTML</button>
@@ -311,6 +499,8 @@
         <select class="chon-du-an o-dai"></select>
         <div class="ghi-chu thong-tin-du-an"></div>
       </div>
+
+      <div class="the hop-video-chon" data-man="prompt-anh"></div>
 
       <div class="the the-doc-lap">
         <label class="nhan">Kịch bản dùng để cắt cảnh</label>
@@ -418,8 +608,6 @@
             <input type="number" data-khoa="viewToiThieu" min="0" step="1000"></label>
           <label>Thời lượng tối thiểu (giây)
             <input type="number" data-khoa="thoiLuongToiThieuGiay" min="0" step="10"></label>
-          <label>Loại kênh trên (triệu sub, 0 = không loại)
-            <input type="number" data-khoa="subToiDaTrieu" min="0" step="1"></label>
           <label>Quốc gia
             <input data-khoa="regionCode" maxlength="2"></label>
           <label>Ngôn ngữ
@@ -427,6 +615,36 @@
           <label class="o-danh-dau"><input type="checkbox" data-khoa="boShorts"> Bỏ Shorts (dưới 61 giây)</label>
           <label class="o-danh-dau"><input type="checkbox" data-khoa="chiVideoDai"> Chỉ video ≥ 20 phút (cùng hạng với kênh mình)</label>
           <label class="o-danh-dau"><input type="checkbox" data-khoa="tinhVuotTrungViKenh"> Tính vượt trung vị kênh (chính xác nhất, +2 đơn vị quota mỗi kênh)</label>
+        </div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Tệp khán giả Mỹ &amp; cỡ kênh</label>
+        <p class="ghi-chu">YouTube API <b>không cho biết</b> khán giả của kênh người khác ở nước nào (số liệu đó chỉ chủ kênh
+          thấy). Tool dùng các dấu hiệu gần nhất có được: tìm theo khu vực Mỹ, gợi ý từ khóa theo người xem Mỹ
+          (<code>gl=us</code>), ngôn ngữ thoại chủ kênh khai, và quốc gia chủ kênh khai.</p>
+        <div class="luoi-cai-dat">
+          <label>Kênh vừa &amp; nhỏ: sub tối thiểu
+            <input type="number" data-khoa="subToiThieu" min="0" step="500"></label>
+          <label>Kênh vừa &amp; nhỏ: sub tối đa
+            <input type="number" data-khoa="subToiDa" min="1000" step="10000"></label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="uuTienKenhVuaNho"> Ưu tiên kênh vừa &amp; nhỏ (+0,5 điểm; kênh lớn −0,6)</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="chiKenhVuaNho"> Loại hẳn kênh ngoài khoảng sub trên</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="chiTiengAnh"> Bỏ video khai ngôn ngữ thoại khác tiếng Anh</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="uuTienKenhMy"> Trừ điểm kênh khai quốc gia khác Mỹ (−0,4)</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="chiKenhMy"> Loại hẳn kênh khai quốc gia khác Mỹ</label>
+        </div>
+        <p class="ghi-chu">Kênh để trống mục quốc gia / ngôn ngữ <b>không</b> bị trừ hay bị loại — rất nhiều kênh Mỹ không điền.</p>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Đề xuất video (Radar)</label>
+        <div class="luoi-cai-dat">
+          <label>Số video hạt giống mặc định
+            <input type="number" data-khoa="soVideoHatGiong" min="2" max="20"></label>
+          <label>Hạt giống: video đăng trong
+            <select data-khoa="radarThoiGian"><option value="tuan">1 tuần</option><option value="thang">1 tháng</option><option value="nam">1 năm</option></select></label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="radarDocTrangChu"> Đọc thêm trang chủ của tài khoản</label>
         </div>
       </div>
 
@@ -519,7 +737,8 @@
       <div class="the">
         <label class="nhan">Quy trình đủ một video</label>
         <ol class="danh-sach-buoc">
-          <li><b>Ý tưởng</b> → ghép 5 từ khóa (miễn phí) → sửa lại → <b>Tìm video</b>.</li>
+          <li><b>Ý tưởng</b> → ghép 5 từ khóa (miễn phí) → sửa lại → <b>Tìm video</b> → <b>tick</b> những video muốn làm theo.</li>
+          <li><b>Đề xuất video</b> → nhập lĩnh vực → <b>Chạy radar</b> để xem YouTube đang đẩy video nào → tick thêm.</li>
           <li><b>Kênh theo dõi</b> → thêm các kênh đối thủ → quét mỗi ngày (3 đơn vị/kênh) để bắt video nổ sớm.</li>
           <li><b>Lời thoại</b> → tạo dự án → dán 2–4 link video → lấy phụ đề.</li>
           <li><b>Kịch bản</b> → chép prompt dàn ý → dán sang Claude → dán dàn ý về → làm từng phần một.</li>
@@ -529,12 +748,27 @@
       </div>
 
       <div class="the">
+        <label class="nhan">Video đã chọn — sợi dây nối Nghiên cứu với Sản xuất</label>
+        <p class="ghi-chu">Tick ô ☐ đầu dòng ở màn <b>Ý tưởng</b>, <b>Đề xuất video</b> hoặc <b>Kênh theo dõi</b>. Số video đã
+          chọn hiện ở thanh bên trái, và cả 4 màn Sản xuất đều có khối <b>Video đã chọn</b> với nút riêng:</p>
+        <table class="bang-giai-thich">
+          <tr><td><b>Lời thoại</b></td><td>Nạp link các video đã tick vào ô link, hoặc lấy lời thoại ngay.</td></tr>
+          <tr><td><b>Kịch bản</b></td><td>Đưa tiêu đề + số liệu các video đã tick vào prompt dàn ý làm "video tham khảo".</td></tr>
+          <tr><td><b>Kiểm duyệt</b></td><td>Lấy lời thoại video gốc làm bản so độ giống.</td></tr>
+          <tr><td><b>Prompt ảnh</b></td><td>Tải thumbnail vào thư mục dự án làm ảnh tham chiếu phong cách.</td></tr>
+        </table>
+        <p class="ghi-chu">Danh sách được lưu lại — tắt app mở lại vẫn còn. Bỏ tick hoặc bấm × để gỡ.</p>
+      </div>
+
+      <div class="the">
         <label class="nhan">Hiểu cột điểm</label>
         <table class="bang-giai-thich">
           <tr><td><b>View/giờ</b></td><td>View chia số giờ từ lúc đăng. Video 2 ngày 100k mạnh hơn video 13 ngày 300k.</td></tr>
           <tr><td><b>View/Sub</b></td><td>Vượt quy mô kênh. Trên 1 là video vượt số sub, trên 5 là rất mạnh.</td></tr>
           <tr><td><b>Vượt trung vị kênh</b></td><td>So với trung vị 20 video gần nhất của chính kênh đó — đáng tin nhất. Từ 3 lần trở lên là NỔ VIEW.</td></tr>
-          <tr><td><b>Điểm</b></td><td>Ba chỉ số trên chuẩn hoá rồi cộng theo trọng số 0,40 / 0,25 / 0,35.</td></tr>
+          <tr><td><b>Điểm</b></td><td>Ba chỉ số trên chuẩn hoá rồi cộng theo trọng số 0,40 / 0,25 / 0,35, rồi
+            <b>+0,5 nếu kênh 1.000–100.000 sub</b>, −0,6 nếu kênh lớn hơn, −0,4 nếu kênh khai quốc gia khác Mỹ.</td></tr>
+          <tr><td><b>Đề xuất x/N</b></td><td>Radar: video được YouTube gợi ý cạnh x trong N nguồn đã đọc. <b>ĐẨY MẠNH</b> = từ 35% số nguồn trở lên (ít nhất 3).</td></tr>
         </table>
       </div>
 
