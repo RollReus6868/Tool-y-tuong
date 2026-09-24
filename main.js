@@ -30,6 +30,11 @@ const videoDaChon = require('./src/video-da-chon')
 const { chayRadar, ghepSoLieuApi } = require('./src/chay-radar')
 const radar = require('./src/radar-de-xuat')
 const chamDiem = require('./src/cham-diem')
+const xuatCanh = require('./src/xuat-canh')
+const phanLoaiFt = require('./src/footage-phan-loai')
+const nguonFt = require('./src/footage-nguon')
+const taiFt = require('./src/footage-tai')
+const { taiVeTep } = require('./src/goi-mang')
 
 const LA_SMOKE = !!process.env.YT_SMOKE
 let cuaSo = null
@@ -912,9 +917,12 @@ function dangKyIPC() {
     return { ok: true, canh, thongKe: promptAnh.thongKeCanh(canh) }
   })
 
-  ipcMain.handle('promptanh:prompt-mo-ta', (_su, { canh, loThu, moiLo, kieu }) => {
+  // boSo: số cảnh đã có footage — không xin Claude mô tả nữa (đỡ lượt dán).
+  // Số trong ngoặc vuông vẫn là SỐ GỐC nên câu trả lời ghép đúng chỗ.
+  ipcMain.handle('promptanh:prompt-mo-ta', (_su, { canh, loThu, moiLo, kieu, boSo }) => {
     const caiDat = kho.docCaiDat()
-    const lo = promptAnh.chiaLo(canh, moiLo || 50)
+    const bo = new Set(boSo || [])
+    const lo = promptAnh.chiaLo((canh || []).filter((c) => !bo.has(c.so)), moiLo || 50)
     const i = Math.min(Math.max(1, loThu || 1), lo.length) - 1
     const tuyChon = {
       style: (caiDat.oPrompt && caiDat.oPrompt.style) || promptAnh.MAC_DINH_O.style,
@@ -954,7 +962,14 @@ function dangKyIPC() {
     }
   })
 
-  ipcMain.handle('promptanh:xuat', async (_su, { canh, cacPrompt, duAnMa }) => {
+  ipcMain.handle('promptanh:xuat', async (_su, { canh, cacPrompt, duAnMa, keHoachFootage }) => {
+    // Có kế hoạch footage KHỚP bộ cảnh này và đã có tệp footage → ghi thêm chuỗi
+    // số cho Flow. Không khớp thì thôi: chuỗi số lệch còn tệ hơn không có.
+    let chuoiSoFlow = ''
+    if (keHoachFootage && phanLoaiFt.kiemKhopKeHoach(canh, keHoachFootage).khop &&
+        xuatCanh.soCoFootage(keHoachFootage).size) {
+      chuoiSoFlow = xuatCanh.nenChuoiSo(xuatCanh.canhConLai(canh, keHoachFootage).map((c) => c.so))
+    }
     const { canceled, filePaths } = await dialog.showOpenDialog(cuaSo, {
       title: 'Chọn thư mục để xuất prompt',
       properties: ['openDirectory', 'createDirectory'],
@@ -972,7 +987,10 @@ function dangKyIPC() {
       daGhi.push(dd)
     }
 
+    // prompts.txt LUÔN ĐỦ mọi cảnh, kể cả cảnh footage — Flow tra prompts[index-1]
+    // theo số gốc. Cảnh footage bị bỏ qua nhờ chuỗi số, không phải nhờ xoá dòng.
     ghi('prompts.txt', promptAnh.xuatPromptsTxt(cacPrompt))
+    if (chuoiSoFlow) ghi('chuoi-so-flow.txt', chuoiSoFlow + '\n')
     ghi('ten-anh.txt', promptAnh.xuatTenAnh(cacPrompt))
     ghi('scenes.json', promptAnh.xuatScenesJson(canh, cacPrompt, {
       duAn: duAnMa || '', tuMoiCanh: caiDat.tuMoiCanh
@@ -983,8 +1001,296 @@ function dangKyIPC() {
     await xuatExcelPrompt(duongDanXlsx, canh, cacPrompt)
     daGhi.push(duongDanXlsx)
 
-    nhatKy.tin(`Xuất ${cacPrompt.length} prompt ra ${thuMuc}`)
-    return { ok: true, thuMuc, daGhi, soPrompt: cacPrompt.length }
+    nhatKy.tin(`Xuất ${cacPrompt.length} prompt ra ${thuMuc}` + (chuoiSoFlow ? ` · chuỗi số Flow ${chuoiSoFlow}` : ''))
+    return { ok: true, thuMuc, daGhi, soPrompt: cacPrompt.length, chuoiSoFlow }
+  })
+
+  // --- Footage thật ----------------------------------------------------------
+  // Một video = một "thư mục dựng" (cũng là thư mục INPUT của CapCut Draft
+  // Studio). Kế hoạch footage lưu ngay trong thư mục đó, sau MỖI cảnh.
+  let dangChayFootage = false
+  let huyFootage = false
+  const duongDanCacheFt = () => path.join(kho.thuMuc, 'cache-footage.json')
+  let cacheFt = null
+  const layCacheFt = () => {
+    if (cacheFt) return cacheFt
+    let duLieu = {}
+    try { duLieu = JSON.parse(fs.readFileSync(duongDanCacheFt(), 'utf8')) } catch (_) {}
+    cacheFt = nguonFt.taoCache(duLieu)
+    return cacheFt
+  }
+  const luuCacheFt = () => {
+    try { fs.writeFileSync(duongDanCacheFt(), JSON.stringify(layCacheFt().xuat())) } catch (e) { nhatKy.canhBao('Không ghi được cache footage: ' + e.message) }
+  }
+
+  function trangThaiNguon(caiDat) {
+    return {
+      pexels: !!(caiDat.footageDungPexels && String(caiDat.khoaPexels || '').trim()),
+      pixabay: !!(caiDat.footageDungPixabay && String(caiDat.khoaPixabay || '').trim()),
+      wikimedia: caiDat.footageDungWikimedia !== false,
+      loc: caiDat.footageDungLoc !== false
+    }
+  }
+
+  ipcMain.handle('footage:nguon', () => {
+    const caiDat = kho.docCaiDat()
+    return {
+      bat: trangThaiNguon(caiDat),
+      coKhoaPexels: !!String(caiDat.khoaPexels || '').trim(),
+      coKhoaPixabay: !!String(caiDat.khoaPixabay || '').trim()
+    }
+  })
+
+  ipcMain.handle('footage:thu-muc', async (_su, { duAnMa, chonMoi } = {}) => {
+    let thuMuc = null
+    if (!chonMoi && duAnMa) thuMuc = path.join(khoDuAn.duongDan(duAnMa), 'san-xuat')
+    if (!thuMuc) {
+      const { canceled, filePaths } = await dialog.showOpenDialog(cuaSo, {
+        title: 'Chọn THƯ MỤC DỰNG cho video này (cũng là thư mục INPUT của CapCut Draft Studio)',
+        defaultPath: app.getPath('downloads'),
+        properties: ['openDirectory', 'createDirectory']
+      })
+      if (canceled || !filePaths.length) return { ok: false, huy: true }
+      thuMuc = filePaths[0]
+    }
+    fs.mkdirSync(thuMuc, { recursive: true })
+    try {
+      return { ok: true, thuMuc, keHoach: taiFt.docKeHoach(thuMuc) }
+    } catch (e) {
+      return { ok: true, thuMuc, keHoach: null, loiKeHoach: e.message }
+    }
+  })
+
+  ipcMain.handle('footage:xuat-canh', async (_su, { thuMuc, canh }) => {
+    if (!thuMuc) return { ok: false, loi: 'Chưa chọn thư mục dựng.' }
+    if (!(canh || []).length) return { ok: false, loi: 'Chưa có cảnh nào. Cắt cảnh trước đã.' }
+    const dd = path.join(thuMuc, 'canh.xlsx')
+    try {
+      await xuatCanh.xuatExcelCanh(dd, canh)
+    } catch (e) {
+      // Hay gặp nhất: tệp đang mở trong Excel (Windows khoá tệp).
+      return { ok: false, loi: `Không ghi được ${dd}: ${e.message}. Tệp đang mở trong Excel thì đóng lại rồi bấm lại.` }
+    }
+    nhatKy.tin(`Xuất ${canh.length} cảnh ra ${dd}`)
+    return { ok: true, duongDan: dd }
+  })
+
+  ipcMain.handle('footage:lap-ke-hoach', (_su, { canh, thuMuc }) => {
+    // Kế hoạch mới thay kế hoạch cũ: tệp footage của kế hoạch cũ mang số cảnh
+    // CŨ — để nguyên trong Videos/ Images/ là CapCut ghép nhầm vào cảnh mới
+    // trùng số. Chuyển hết vào _footage-da-bo.
+    let soDon = 0
+    if (thuMuc) {
+      let cu = null
+      try { cu = taiFt.docKeHoach(thuMuc) } catch (_) {}
+      for (const c of (cu && cu.canh) || []) {
+        if (c.chon && c.chon.tep && taiFt.dayRaBo(thuMuc, c.chon.tep)) soDon++
+      }
+    }
+    const keHoach = phanLoaiFt.taoKeHoach(canh, phanLoaiFt.locSo(canh))
+    if (thuMuc) taiFt.ghiKeHoach(thuMuc, keHoach)
+    return { ok: true, keHoach, soDon }
+  })
+
+  ipcMain.handle('footage:kiem-khop', (_su, { canh, keHoach }) => phanLoaiFt.kiemKhopKeHoach(canh, keHoach))
+
+  ipcMain.handle('footage:luu', (_su, { thuMuc, keHoach }) => {
+    if (!thuMuc || !keHoach) return { ok: false }
+    taiFt.ghiKeHoach(thuMuc, keHoach)
+    return { ok: true }
+  })
+
+  ipcMain.handle('footage:prompt-phan-loai', (_su, { keHoach, loThu, moiLo }) => {
+    const caiDat = kho.docCaiDat()
+    const can = (keHoach.canh || []).filter((c) => c.canHoi)
+    if (!can.length) return { ok: true, tongLo: 0, prompt: '', soCanh: 0 }
+    const lo = promptAnh.chiaLo(can, moiLo || caiDat.soCanhMoiLo || 50)
+    const i = Math.min(Math.max(1, loThu || 1), lo.length) - 1
+    return {
+      ok: true,
+      tongLo: lo.length,
+      loThu: i + 1,
+      soCanh: lo[i].length,
+      tongCanHoi: can.length,
+      prompt: phanLoaiFt.taoPromptPhanLoai(lo[i], { loThu: i + 1, tongLo: lo.length })
+    }
+  })
+
+  ipcMain.handle('footage:doc-phan-loai', (_su, { chu, keHoach, thuMuc }) => {
+    const kq = phanLoaiFt.docTraLoiPhanLoai(chu)
+    if (!kq.soDoc) return { ok: false, loi: kq.loi.join(' · ') || 'Không đọc được dòng nào.' }
+    // Cảnh Claude đổi sang AI mà đã có tệp tải về → chuyển tệp vào _bo, không
+    // thì cảnh đó vừa có footage vừa đi Flow.
+    const coTep = new Map(keHoach.canh.filter((c) => c.chon && c.chon.tep).map((c) => [c.so, c.chon.tep]))
+    const soDoi = phanLoaiFt.apDungClaude(keHoach, kq.ketQua)
+    for (const c of keHoach.canh) {
+      if (c.loai === 'AI' && coTep.has(c.so) && thuMuc) { taiFt.dayRaBo(thuMuc, coTep.get(c.so)); c.chon = null }
+    }
+    if (thuMuc) taiFt.ghiKeHoach(thuMuc, keHoach)
+    return { ok: true, keHoach, soDoc: kq.soDoc, soDoi, canhBao: kq.loi.join(' · ') }
+  })
+
+  ipcMain.handle('footage:tim-tai', async (_su, { thuMuc, keHoach, chiSo }) => {
+    if (dangChayFootage) return { ok: false, loi: 'Đang tìm/tải footage rồi — chờ lượt này xong hoặc bấm Dừng.' }
+    if (!thuMuc) return { ok: false, loi: 'Chưa chọn thư mục dựng.' }
+    const caiDat = kho.docCaiDat()
+    const bat = trangThaiNguon(caiDat)
+    if (!Object.values(bat).some(Boolean)) return { ok: false, loi: 'Chưa bật nguồn footage nào. Vào Cài đặt → Footage thật.' }
+
+    dangChayFootage = true
+    huyFootage = false
+    const tim = nguonFt.taoTimKiem({
+      layJSONHam: layJSON,
+      khoa: { pexels: String(caiDat.khoaPexels || '').trim(), pixabay: String(caiDat.khoaPixabay || '').trim() },
+      bat,
+      cache: layCacheFt(),
+      choBySa: !!caiDat.footageChoCcBySa,
+      nhatKy
+    })
+    const giayTheoSo = Object.fromEntries(keHoach.canh.map((c) => [c.so, c.giayUoc || 9]))
+    try {
+      const kq = await taiFt.chayTimVaTai(keHoach, {
+        thuMuc,
+        timChoCanh: tim.timChoCanh,
+        taiVeTepHam: (url, dich, tuyChon) => taiVeTep(url, dich, { ...tuyChon, tieuDe: { 'User-Agent': nguonFt.USER_AGENT } }),
+        giayTheoSo,
+        chiSo: chiSo && chiSo.length ? chiSo : null,
+        soUngVien: Number(caiDat.footageSoUngVien) || 6,
+        baoTienDo: (t) => baoTienDo({ ...t, khu: 'footage' }),
+        daHuy: () => huyFootage,
+        luu: (kh) => taiFt.ghiKeHoach(thuMuc, kh)
+      })
+      luuCacheFt()
+      baoTienDo({
+        phanTram: 100, viec: 'Tìm & tải footage xong',
+        chiTiet: `${kq.soTai}/${kq.soCan} cảnh có tệp · ${kq.soKhongThay} cảnh không tìm ra`,
+        soLoi: kq.loi.length, trangThai: kq.loi.length ? 'loi' : 'xong', khu: 'footage'
+      })
+      nhatKy.tin(`Footage: tải ${kq.soTai}/${kq.soCan} cảnh vào ${thuMuc}`)
+      for (const l of kq.loi) nhatKy.canhBao(`Footage cảnh ${l.so ?? '-'}: ${l.loi}`)
+      return { ok: true, keHoach, ...kq }
+    } catch (e) {
+      nhatKy.loi('Footage vỡ:', e.stack || e.message)
+      baoTienDo({ phanTram: 100, viec: 'Footage lỗi', chiTiet: e.message, soLoi: 1, trangThai: 'loi', khu: 'footage' })
+      return { ok: false, loi: e.message, keHoach }
+    } finally {
+      dangChayFootage = false
+    }
+  })
+
+  ipcMain.handle('footage:dung', () => { huyFootage = true; return { ok: true } })
+
+  ipcMain.handle('footage:chon-ung-vien', async (_su, { thuMuc, keHoach, so, id }) => {
+    const c = keHoach.canh.find((x) => x.so === so)
+    const uv = c && (c.ungVien || []).find((x) => x.id === id)
+    if (!uv) return { ok: false, loi: 'Không thấy ứng viên này nữa — bấm "Tìm lại".' }
+    const daDung = keHoach.canh.find((x) => x.so !== so && x.chon && x.chon.id === id)
+    if (daDung) return { ok: false, loi: `Footage này đang dùng ở cảnh ${daDung.so} rồi — chọn cái khác để video không lặp hình.` }
+    try {
+      baoTienDo({ phanTram: 10, viec: `Tải footage cảnh ${so}`, chiTiet: uv.nguon, khu: 'footage' })
+      await taiFt.taiChoCanh(c, uv, {
+        thuMuc,
+        taiVeTepHam: (url, dich, t) => taiVeTep(url, dich, { ...t, tieuDe: { 'User-Agent': nguonFt.USER_AGENT } })
+      })
+      c.loai = 'FOOTAGE'
+      taiFt.ghiKeHoach(thuMuc, keHoach)
+      baoTienDo({ phanTram: 100, viec: `Đã đổi footage cảnh ${so}`, chiTiet: c.chon.tep, trangThai: 'xong', khu: 'footage' })
+      return { ok: true, keHoach }
+    } catch (e) {
+      baoTienDo({ phanTram: 100, viec: `Tải footage cảnh ${so} lỗi`, chiTiet: e.message, soLoi: 1, trangThai: 'loi', khu: 'footage' })
+      return { ok: false, loi: e.message, keHoach }
+    }
+  })
+
+  ipcMain.handle('footage:doi-loai', (_su, { thuMuc, keHoach, so, loai, tuKhoaTim, kieu }) => {
+    const c = keHoach.canh.find((x) => x.so === so)
+    if (!c) return { ok: false, loi: 'Không thấy cảnh ' + so }
+    if (loai === 'AI') taiFt.traVeAi(keHoach, so, thuMuc)
+    else {
+      c.loai = 'FOOTAGE'
+      c.nguonPhanLoai = 'tay'
+      c.canHoi = false
+      if (tuKhoaTim !== undefined) c.tuKhoaTim = String(tuKhoaTim).trim()
+      if (kieu) c.kieu = kieu
+    }
+    if (thuMuc) taiFt.ghiKeHoach(thuMuc, keHoach)
+    return { ok: true, keHoach }
+  })
+
+  ipcMain.handle('footage:xuat-loc', async (_su, { thuMuc, keHoach }) => {
+    if (!thuMuc || !keHoach) return { ok: false, loi: 'Chưa có thư mục dựng hoặc kế hoạch.' }
+    const dd = path.join(thuMuc, 'canh-cho-flow.xlsx')
+    let kq
+    try {
+      kq = await xuatCanh.xuatExcelLoc(dd, keHoach.canh, keHoach)
+    } catch (e) {
+      return { ok: false, loi: `Không ghi được ${dd}: ${e.message}. Tệp đang mở trong Excel thì đóng lại.` }
+    }
+    fs.writeFileSync(path.join(thuMuc, 'chuoi-so-flow.txt'), kq.chuoi + '\n', 'utf8')
+    fs.writeFileSync(path.join(thuMuc, 'ghi-cong-footage.txt'), xuatCanh.vanBanGhiCong(keHoach), 'utf8')
+    nhatKy.tin(`Xuất Excel đã lọc: ${kq.soConLai} cảnh cho Flow · chuỗi số ${kq.chuoi}`)
+    return { ok: true, ...kq, soFootage: xuatCanh.soCoFootage(keHoach).size }
+  })
+
+  function thuMucAudio(thuMuc) {
+    for (const ten of ['Audio', 'audio', 'Voice', 'voice', 'Voices', 'voices']) {
+      const d = path.join(thuMuc, ten)
+      if (fs.existsSync(d)) return d
+    }
+    return path.join(thuMuc, 'Audio')
+  }
+
+  function kiemDuThuMuc(thuMuc, soCanh) {
+    return xuatCanh.kiemDu(soCanh, {
+      Videos: xuatCanh.docTenTrongThuMuc(path.join(thuMuc, 'Videos')),
+      Images: xuatCanh.docTenTrongThuMuc(path.join(thuMuc, 'Images')),
+      Audio: xuatCanh.docTenTrongThuMuc(thuMucAudio(thuMuc))
+    })
+  }
+
+  ipcMain.handle('footage:gom-flow', async (_su, { thuMuc, keHoach }) => {
+    if (!thuMuc || !keHoach) return { ok: false, loi: 'Chưa có thư mục dựng hoặc kế hoạch.' }
+    const { canceled, filePaths } = await dialog.showOpenDialog(cuaSo, {
+      title: 'Chọn thư mục Flow đã tải ảnh/video về',
+      defaultPath: app.getPath('downloads'),
+      properties: ['openDirectory']
+    })
+    if (canceled || !filePaths.length) return { ok: false, huy: true }
+    const tuThuMuc = filePaths[0]
+    if (path.resolve(tuThuMuc) === path.resolve(thuMuc)) return { ok: false, loi: 'Thư mục Flow trùng thư mục dựng — chọn thư mục Flow tải về.' }
+    const gom = xuatCanh.keHoachGom(xuatCanh.docTenTrongThuMuc(tuThuMuc), { soFootage: xuatCanh.soCoFootage(keHoach) })
+    const thua = gom.lenh.filter((l) => l.so > keHoach.canh.length)
+    const lenh = gom.lenh.filter((l) => l.so <= keHoach.canh.length)
+    let da = 0
+    for (const l of lenh) {
+      const dich = path.join(thuMuc, l.den)
+      fs.mkdirSync(path.dirname(dich), { recursive: true })
+      // Cùng số mà đã có tệp khác đuôi ở thư mục kia (ảnh → video) thì chuyển tệp
+      // cũ vào _bo, để một số chỉ còn một hình.
+      const khac = path.join(thuMuc, l.loai === 'video' ? 'Images' : 'Videos')
+      for (const ten of xuatCanh.docTenTrongThuMuc(khac)) {
+        if (/^\d+$/.test(path.parse(ten).name) && Number(path.parse(ten).name) === l.so) {
+          taiFt.dayRaBo(thuMuc, path.join(l.loai === 'video' ? 'Images' : 'Videos', ten))
+        }
+      }
+      for (const ten of xuatCanh.docTenTrongThuMuc(path.dirname(dich))) {
+        if (ten !== path.basename(dich) && /^\d+$/.test(path.parse(ten).name) && Number(path.parse(ten).name) === l.so) {
+          taiFt.dayRaBo(thuMuc, path.join(path.dirname(l.den), ten))
+        }
+      }
+      fs.copyFileSync(path.join(tuThuMuc, l.tu), dich)
+      da++
+      baoTienDo({ phanTram: Math.round((da / lenh.length) * 100), viec: 'Gom tệp Flow', chiTiet: `${da}/${lenh.length}`, khu: 'footage' })
+    }
+    const kiem = kiemDuThuMuc(thuMuc, keHoach.canh.length)
+    baoTienDo({ phanTram: 100, viec: 'Gom tệp Flow xong', chiTiet: `${da} tệp · thiếu hình ${kiem.thieuHinh.length} cảnh`, trangThai: kiem.ok ? 'xong' : 'loi', soLoi: kiem.thieuHinh.length, khu: 'footage' })
+    nhatKy.tin(`Gom ${da} tệp Flow từ ${tuThuMuc} vào ${thuMuc}`)
+    return { ok: true, soChep: da, boQua: gom.boQua, nhieuTep: gom.nhieuTep, thua: thua.map((l) => l.tu), kiem }
+  })
+
+  ipcMain.handle('footage:kiem-du', (_su, { thuMuc, soCanh }) => {
+    if (!thuMuc) return { ok: false, loi: 'Chưa chọn thư mục dựng.' }
+    return { ok: true, kiem: kiemDuThuMuc(thuMuc, soCanh) }
   })
 
   // --- Kho nhân vật / bối cảnh ----------------------------------------------
@@ -1154,7 +1460,7 @@ async function chaySmoke() {
   fs.mkdirSync(thuMucAnh, { recursive: true })
   nhatKy.tin(`Smoke ghi ảnh vào: ${thuMucAnh}`)
 
-  const cacMan = ['y-tuong', 'de-xuat', 'kenh', 'loi-thoai', 'kich-ban', 'kiem-duyet', 'prompt-anh', 'trinh-duyet', 'cai-dat', 'huong-dan', 'nhat-ky']
+  const cacMan = ['y-tuong', 'de-xuat', 'kenh', 'loi-thoai', 'kich-ban', 'kiem-duyet', 'prompt-anh', 'footage', 'trinh-duyet', 'cai-dat', 'huong-dan', 'nhat-ky']
   const thieu = []
 
   // Nạp dữ liệu mẫu TRƯỚC khi chụp: bảng trống thì ảnh chụp không cho biết
@@ -1182,7 +1488,10 @@ async function chaySmoke() {
     ['y-tuong', '#bang-ket-qua', 'y-tuong-bang'],
     ['de-xuat', '#bang-radar', 'de-xuat-bang-radar'],
     ['trinh-duyet', '#the-cong-dung-duyet', 'trinh-duyet-cong-dung'],
-    ['cai-dat', '[data-khoa="subToiThieu"]', 'cai-dat-kenh-my']
+    ['cai-dat', '[data-khoa="subToiThieu"]', 'cai-dat-kenh-my'],
+    ['footage', '#bang-footage', 'footage-bang-duyet'],
+    ['footage', '#nut-gom-flow', 'footage-gom-kiem'],
+    ['cai-dat', '[data-khoa="khoaPexels"]', 'cai-dat-footage']
   ]
   for (const [man, chon, tenAnh] of khoiDuoiTamNhin) {
     await cuaSo.webContents.executeJavaScript(`window.smokeMoMan('${man}')\n;undefined;`).catch(() => {})
@@ -1221,7 +1530,12 @@ async function chaySmoke() {
     '.hop-video-chon[data-man="kich-ban"] #o-dung-video-tham-khao',
     '.hop-video-chon[data-man="kiem-duyet"] .hang-hanh-dong button',
     '.hop-video-chon[data-man="prompt-anh"] .hang-hanh-dong button',
-    '#o-ban-goc', '#the-cong-dung-duyet', '#nut-sang-radar'
+    '#o-ban-goc', '#the-cong-dung-duyet', '#nut-sang-radar',
+    // 0.5.0: Footage thật
+    '#man-footage', '#nut-chon-thu-muc-dung', '#nut-cat-canh-ft', '#nut-xuat-canh-xlsx', '#nut-loc-so',
+    '#nut-prompt-phan-loai', '#o-tra-loi-phan-loai', '#nut-doc-phan-loai', '#nut-tim-tai-ft', '#nut-dung-ft',
+    '#bang-footage', '#bang-footage .the-ung-vien img', '#nut-xuat-loc', '#o-chuoi-so-flow', '#nut-gom-flow', '#nut-kiem-du',
+    '#o-bo-canh-footage', '[data-khoa="khoaPexels"]', '[data-khoa="khoaPixabay"]'
   ]
   const thieuPhanTu = await cuaSo.webContents.executeJavaScript(`
     (function () {
@@ -1256,12 +1570,23 @@ async function chaySmoke() {
     })()
   `)
 
-  const ketQua = { thieuMan: thieu, thieuPhanTu, thieuKhoaCaiDat: thieuKhoa, bicHe, anhThumbnail: anhVo }
+  // Ảnh xem trước ở bảng Footage cũng phải vẽ ra thật (CSP img-src).
+  const anhFootage = await cuaSo.webContents.executeJavaScript(`
+    (function () {
+      window.smokeMoMan('footage');
+      var cac = document.querySelectorAll('#bang-footage img');
+      var vo = 0;
+      for (var i = 0; i < cac.length; i++) if (!cac[i].complete || cac[i].naturalWidth === 0) vo++;
+      return { tong: cac.length, vo: vo };
+    })()
+  `)
+
+  const ketQua = { thieuMan: thieu, thieuPhanTu, thieuKhoaCaiDat: thieuKhoa, bicHe, anhThumbnail: anhVo, anhFootage }
   fs.writeFileSync(path.join(thuMucAnh, 'ket-qua-smoke.json'), JSON.stringify(ketQua, null, 2))
   nhatKy.tin('Smoke kết quả:', JSON.stringify(ketQua))
 
   const vo = thieu.length || thieuPhanTu.length || (thieuKhoa && thieuKhoa.length) || bicHe.bi ||
-    !anhVo.tong || anhVo.vo > 0
+    !anhVo.tong || anhVo.vo > 0 || !anhFootage.tong || anhFootage.vo > 0
   app.exit(vo ? 1 : 0)
 }
 

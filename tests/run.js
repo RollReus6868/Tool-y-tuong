@@ -1773,6 +1773,420 @@ async function chay() {
   })
 
   // =========================================================================
+  nhom('34. Cảnh → Excel, chuỗi số cho Flow, giữ SỐ GỐC khi lọc')
+
+  const xuatCanh = require('../src/xuat-canh')
+  const phanLoai = require('../src/footage-phan-loai')
+  const nguonFt = require('../src/footage-nguon')
+  const taiFt = require('../src/footage-tai')
+  const ExcelJS = require('exceljs')
+
+  await kiem('nén chuỗi số đúng cú pháp ô "Dùng danh sách số tuỳ chọn" của Flow', () => {
+    assert.strictEqual(xuatCanh.nenChuoiSo([1, 2, 3, 5, 7, 8, 9, 12]), '1-3,5,7-9,12')
+    assert.strictEqual(xuatCanh.nenChuoiSo([9, 3, 3, 1, 2]), '1-3,9', 'bỏ trùng + sắp xếp')
+    assert.strictEqual(xuatCanh.nenChuoiSo([]), '')
+    assert.deepStrictEqual(xuatCanh.tachChuoiSo('1-3,5,9-7'), [1, 2, 3, 5, 7, 8, 9])
+    const ds = [1, 2, 4, 5, 6, 10, 11, 40]
+    assert.deepStrictEqual(xuatCanh.tachChuoiSo(xuatCanh.nenChuoiSo(ds)), ds, 'nén rồi tách phải ra đúng như cũ')
+  })
+
+  await kiem('chuỗi số khớp NGUYÊN VĂN bộ đọc parseIndexList của Flow', () => {
+    // Chép logic parseIndexList của Flow Automation Studio 2.8.6 (src/ui/app.js).
+    function parseIndexList(raw, total) {
+      const out = new Set()
+      for (const phan of String(raw || '').split(',')) {
+        const s = phan.trim()
+        if (!s) continue
+        const m = s.match(/^(\d+)\s*-\s*(\d+)$/)
+        if (m) {
+          let a = parseInt(m[1], 10); let b = parseInt(m[2], 10)
+          if (a > b) [a, b] = [b, a]
+          for (let i = a; i <= b; i++) if (i >= 1 && i <= total) out.add(i)
+        } else if (/^\d+$/.test(s)) {
+          const i = parseInt(s, 10)
+          if (i >= 1 && i <= total) out.add(i)
+        }
+      }
+      return [...out].sort((a, b) => a - b)
+    }
+    const conLai = [1, 2, 3, 6, 7, 9, 10, 11, 12, 408]
+    assert.deepStrictEqual(parseIndexList(xuatCanh.nenChuoiSo(conLai), 408), conLai)
+  })
+
+  const canhMau = [
+    'The old city of Chicago burned for three days in 1871, and the streets filled with smoke.',
+    '"Do not be afraid," she whispered, holding the child close as the angel appeared.',
+    'Aerial footage of the Mississippi River shows how wide the flood really was.',
+    'He felt his heart break as he remembered his mother.',
+    'Moses lifted his staff and the sea parted before them.',
+    'In 1963, thousands of people marched on Washington for civil rights.'
+  ].map((chu, i) => ({ so: i + 1, ten: String(i + 1).padStart(3, '0'), chu, soTu: chu.split(' ').length, giayUoc: 9 }))
+
+  await kiem('Excel bước 1: đúng 2 cột STT + Cảnh, đủ mọi cảnh', async () => {
+    const d = thuMucTam('canh-xlsx')
+    const dd = path.join(d, 'canh.xlsx')
+    await xuatCanh.xuatExcelCanh(dd, canhMau)
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.readFile(dd)
+    const ws = wb.worksheets[0]
+    assert.deepStrictEqual(ws.getRow(1).values.slice(1), ['STT', 'Cảnh'])
+    assert.strictEqual(ws.actualColumnCount, 2)
+    assert.strictEqual(ws.rowCount, canhMau.length + 1)
+    assert.strictEqual(ws.getRow(7).getCell(1).value, 6)
+  })
+
+  await kiem('Excel đã lọc: bỏ ĐÚNG dòng có footage, GIỮ số gốc (không đánh lại 1,2,3)', async () => {
+    const keHoach = phanLoai.taoKeHoach(canhMau, phanLoai.locSo(canhMau))
+    for (const c of keHoach.canh) { c.loai = 'AI'; c.chon = null }
+    // Cảnh 1 và 6 có tệp; cảnh 3 gắn FOOTAGE nhưng KHÔNG tìm ra → vẫn phải đi Flow.
+    Object.assign(keHoach.canh[0], { loai: 'FOOTAGE', chon: { tep: 'Images/001.jpg', loai: 'anh', nguon: 'Wikimedia Commons', giayPhep: 'Public domain', trang: 'https://commons.wikimedia.org/wiki/File:X.jpg', tacGia: 'Unknown' } })
+    Object.assign(keHoach.canh[5], { loai: 'FOOTAGE', chon: { tep: 'Videos/006.mp4', loai: 'video', nguon: 'Pexels', giayPhep: 'Pexels License', trang: 'https://www.pexels.com/video/x-1/', tacGia: 'A' } })
+    Object.assign(keHoach.canh[2], { loai: 'FOOTAGE', chon: null })
+    const d = thuMucTam('loc-xlsx')
+    const dd = path.join(d, 'canh-cho-flow.xlsx')
+    const kq = await xuatCanh.xuatExcelLoc(dd, canhMau, keHoach)
+    assert.strictEqual(kq.chuoi, '2-5')
+    assert.strictEqual(kq.soConLai, 4)
+    const wb = new ExcelJS.Workbook()
+    await wb.xlsx.readFile(dd)
+    const ws = wb.worksheets[0]
+    const so = []
+    ws.eachRow((r, i) => { if (i > 1) so.push(r.getCell(1).value) })
+    assert.deepStrictEqual(so, [2, 3, 4, 5])
+    assert.strictEqual(ws.getRow(2).getCell(2).value, canhMau[1].chu, 'nội dung phải đi cùng số gốc')
+    assert.strictEqual(ws.actualColumnCount, 2)
+    const ws2 = wb.getWorksheet('Footage')
+    assert.strictEqual(ws2.rowCount, 3, 'trang Footage: tiêu đề + 2 cảnh có tệp')
+    const ghiCong = xuatCanh.vanBanGhiCong(keHoach)
+    assert.ok(/Cảnh 1: Wikimedia Commons — Unknown · Public domain/.test(ghiCong))
+  })
+
+  await kiem('gom tệp Flow: đọc số đầu tên, chuẩn hoá tên cho CapCut, không đè cảnh footage', () => {
+    const kq = xuatCanh.keHoachGom(
+      ['02.png', '03_1.png', '03_2.png', '05.mp4', '05.png', '06.png', 'ghi-chu.txt', 'anh-khong-so.png', '120.png'],
+      { soFootage: new Set([6]) })
+    const lenh = Object.fromEntries(kq.lenh.map((l) => [l.so, l.den.split(path.sep).join('/')]))
+    assert.deepStrictEqual(lenh, { 2: 'Images/002.png', 3: 'Images/003.png', 5: 'Videos/005.mp4', 120: 'Images/120.png' })
+    assert.strictEqual(kq.lenh.find((l) => l.so === 3).tu, '03_1.png')
+    assert.ok(kq.boQua.some((b) => b.ten === '06.png' && /footage/.test(b.lyDo)))
+    assert.ok(kq.nhieuTep.some((n) => n.so === 5 && n.chon === '05.mp4'), 'video thắng ảnh như CapCut')
+    // Tên đích phải là CHỈ CHỮ SỐ — CapCut Draft Studio quét re.fullmatch(r"\d+", stem).
+    for (const l of kq.lenh) assert.ok(/^\d+$/.test(path.parse(l.den).name))
+  })
+
+  await kiem('kiểm đủ: bắt cảnh thiếu hình, trùng số, số thừa, thiếu audio', () => {
+    const r = xuatCanh.kiemDu(6, {
+      Videos: ['004.mp4', '6.mp4'],
+      Images: ['001.jpg', '002.png', '2.jpg', '004.jpg', '009.png', 'ghi-chu.txt'],
+      Audio: ['1.mp3', '2.mp3', '3.mp3', '4.mp3', '5.mp3', '6.mp3']
+    })
+    assert.deepStrictEqual(r.thieuHinh, [3, 5])
+    assert.deepStrictEqual(r.trungSo, [2])
+    assert.deepStrictEqual(r.haiHinh, [4])
+    assert.deepStrictEqual(r.thua, [9])
+    assert.deepStrictEqual(r.thieuAudio, [])
+    assert.strictEqual(r.ok, false)
+    const r2 = xuatCanh.kiemDu(2, { Videos: ['1.mp4'], Images: ['002.jpg'], Audio: ['1.mp3'] })
+    assert.deepStrictEqual(r2.thieuAudio, [2])
+  })
+
+  // =========================================================================
+  nhom('35. Phân loại cảnh: lọc sơ + đọc câu trả lời Claude')
+
+  await kiem('lọc sơ: cảnh lịch sử/địa danh → FOOTAGE, thoại/cảm xúc/Kinh Thánh → AI', () => {
+    const r = Object.fromEntries(phanLoai.locSo(canhMau).map((x) => [x.so, x.goiY]))
+    assert.strictEqual(r[1], 'FOOTAGE', 'Chicago 1871 streets smoke')
+    assert.strictEqual(r[2], 'AI', 'thoại + angel')
+    assert.notStrictEqual(r[3], 'AI', 'Mississippi River flood phải được hỏi Claude hoặc FOOTAGE')
+    assert.strictEqual(r[4], 'AI', 'nội tâm')
+    assert.strictEqual(r[5], 'AI', 'Moses rẽ biển')
+    assert.strictEqual(r[6], 'FOOTAGE', '1963 civil rights Washington')
+  })
+
+  await kiem('ranh giới từ: "sea" không khớp "season", "war" không khớp "toward"', () => {
+    const r = phanLoai.locSo([{ so: 1, chu: 'Toward the end of the season they rested.' }])
+    assert.ok(!/cảnh vật/.test(r[0].lyDo), r[0].lyDo)
+  })
+
+  await kiem('prompt phân loại: đủ cảnh, số trong ngoặc vuông, dặn định dạng dòng |', () => {
+    const p = phanLoai.taoPromptPhanLoai(canhMau.slice(0, 3), { loThu: 1, tongLo: 2 })
+    assert.ok(p.includes('[1] The old city of Chicago'))
+    assert.ok(p.includes('[3] Aerial footage'))
+    assert.ok(p.includes('<số> | FOOTAGE | video hoặc photo |'))
+    assert.ok(p.includes('LÔ 1/2'))
+  })
+
+  await kiem('đọc trả lời Claude: chịu lời dẫn, khối ```, gạch đầu dòng, [số], photo/ảnh', () => {
+    const chu = [
+      'Đây là kết quả:',
+      '```',
+      '1 | FOOTAGE | photo | 1871 great chicago fire ruins | lịch sử',
+      '- [2] | AI | thoại',
+      '3 | FOOTAGE | video | mississippi river flood aerial',
+      '4 | AI',
+      '5 | FOOTAGE | video |   ',
+      '6 | FOOTAGE | ảnh | 1963 march on washington crowd | dân quyền',
+      '```',
+      'Hy vọng hữu ích!'
+    ].join('\n')
+    const kq = phanLoai.docTraLoiPhanLoai(chu)
+    assert.strictEqual(kq.soDoc, 5)
+    assert.deepStrictEqual(kq.ketQua[1], { loai: 'FOOTAGE', kieu: 'anh', tuKhoaTim: '1871 great chicago fire ruins', lyDo: 'lịch sử' })
+    assert.strictEqual(kq.ketQua[2].loai, 'AI')
+    assert.strictEqual(kq.ketQua[3].kieu, 'video')
+    assert.strictEqual(kq.ketQua[6].kieu, 'anh')
+    assert.ok(!kq.ketQua[5], 'FOOTAGE thiếu từ khóa thì không nhận')
+    assert.ok(kq.loi.some((l) => /Cảnh 5/.test(l)))
+    assert.ok(phanLoai.docTraLoiPhanLoai('xin chào').loi.length === 1)
+  })
+
+  await kiem('kế hoạch: Claude sửa nhãn, chỉ cảnh "cần hỏi" mới gửi Claude', () => {
+    const kh = phanLoai.taoKeHoach(canhMau, phanLoai.locSo(canhMau))
+    const canHoi = kh.canh.filter((c) => c.canHoi).map((c) => c.so)
+    assert.ok(!canHoi.includes(2) && !canHoi.includes(4) && !canHoi.includes(5), 'cảnh chắc AI không tốn lượt hỏi')
+    const soDoi = phanLoai.apDungClaude(kh, { 1: { loai: 'FOOTAGE', kieu: 'anh', tuKhoaTim: 'chicago fire 1871', lyDo: '' }, 6: { loai: 'AI', lyDo: 'x' } })
+    assert.strictEqual(kh.canh[0].tuKhoaTim, 'chicago fire 1871')
+    assert.strictEqual(kh.canh[5].loai, 'AI')
+    assert.strictEqual(kh.canh[5].nguonPhanLoai, 'claude')
+    assert.ok(soDoi >= 2)
+  })
+
+  await kiem('kế hoạch phải khớp đúng bộ cảnh — cắt lại cách khác thì chặn', () => {
+    const kh = phanLoai.taoKeHoach(canhMau, phanLoai.locSo(canhMau))
+    assert.strictEqual(phanLoai.kiemKhopKeHoach(canhMau, kh).khop, true)
+    assert.strictEqual(kh.canh[0].chu, canhMau[0].chu, 'kế hoạch giữ chữ của cảnh')
+    assert.strictEqual(phanLoai.kiemKhopKeHoach(canhMau.slice(1), kh).khop, false)
+    const sua = canhMau.map((c) => ({ ...c }))
+    sua[3].chu = 'Một câu khác hẳn.'
+    const r = phanLoai.kiemKhopKeHoach(sua, kh)
+    assert.strictEqual(r.khop, false)
+    assert.strictEqual(r.soLech, 4)
+  })
+
+  // =========================================================================
+  nhom('36. Nguồn footage — URL nguyên văn, đọc kết quả, giấy phép, chấm điểm')
+
+  await kiem('URL gửi ra ngoài khớp NGUYÊN VĂN (lỗi 404 kiểu 0.3.1 không được lặp lại)', () => {
+    assert.strictEqual(nguonFt.urlPexels('video', 'city night', 12),
+      'https://api.pexels.com/v1/videos/search?query=city%20night&per_page=12&orientation=landscape')
+    assert.strictEqual(nguonFt.urlPexels('anh', 'old map', 5),
+      'https://api.pexels.com/v1/search?query=old%20map&per_page=5&orientation=landscape')
+    assert.strictEqual(nguonFt.urlPixabay('video', 'river', 'K', 12),
+      'https://pixabay.com/api/videos/?key=K&q=river&per_page=12&safesearch=true&video_type=film')
+    assert.strictEqual(nguonFt.urlPixabay('anh', 'river', 'K', 1),
+      'https://pixabay.com/api/?key=K&q=river&per_page=3&safesearch=true&image_type=photo&orientation=horizontal&min_width=1280',
+      'Pixabay per_page tối thiểu là 3')
+    assert.strictEqual(nguonFt.urlWikimedia('abraham lincoln portrait', 10),
+      'https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search' +
+      '&gsrsearch=abraham%20lincoln%20portrait%20filetype%3Abitmap&gsrnamespace=6&gsrlimit=10' +
+      '&prop=imageinfo&iiprop=url%7Csize%7Cmime%7Cextmetadata&iiurlwidth=1920' +
+      '&iiextmetadatafilter=LicenseShortName%7CArtist%7CUsageTerms%7CObjectName&origin=*')
+    assert.strictEqual(nguonFt.urlLoc('dust bowl', 10),
+      'https://www.loc.gov/photos/?q=dust%20bowl&fo=json&c=10&fa=online-format:image%7Caccess-restricted:false')
+    assert.ok(nguonFt.urlPixabay('anh', 'x'.repeat(300), 'K').includes('q=' + 'x'.repeat(100) + '&'), 'Pixabay q tối đa 100 ký tự')
+  })
+
+  await kiem('Pexels video: chọn bản ~1920 thay vì 4K, bỏ tệp không phải mp4', () => {
+    const ds = nguonFt.docPexelsVideo({ videos: [{
+      id: 42, url: 'https://www.pexels.com/video/city-traffic-at-night-42/', duration: 18, image: 'https://images.pexels.com/videos/42/p.jpg',
+      user: { name: 'Ann' },
+      video_files: [
+        { quality: 'uhd', file_type: 'video/mp4', width: 3840, height: 2160, link: 'https://v/4k.mp4' },
+        { quality: 'hd', file_type: 'video/mp4', width: 1920, height: 1080, link: 'https://v/1080.mp4' },
+        { quality: 'sd', file_type: 'video/mp4', width: 640, height: 360, link: 'https://v/360.mp4' },
+        { quality: 'hls', file_type: 'application/x-mpegURL', width: 1920, height: 1080, link: 'https://v/x.m3u8' }
+      ] }] })
+    assert.strictEqual(ds.length, 1)
+    assert.strictEqual(ds[0].taiVe, 'https://v/1080.mp4')
+    assert.strictEqual(ds[0].tieuDe, 'city traffic at night')
+    assert.strictEqual(ds[0].thoiLuong, 18)
+    assert.strictEqual(ds[0].giayPhep, 'Pexels License')
+  })
+
+  await kiem('Pexels ảnh + Pixabay ảnh/video đọc đúng trường', () => {
+    const a = nguonFt.docPexelsAnh({ photos: [{ id: 7, width: 6000, height: 4000, url: 'https://www.pexels.com/photo/x-7/', photographer: 'Bo', alt: 'Old church', src: { original: 'o', large2x: 'l2', medium: 'm' } }] })
+    assert.strictEqual(a[0].taiVe, 'l2')
+    assert.strictEqual(a[0].tieuDe, 'Old church')
+    const pv = nguonFt.docPixabayVideo({ hits: [{ id: 9, pageURL: 'p', tags: 'river, flood', duration: 22, user: 'u',
+      videos: { large: { url: '', width: 0 }, medium: { url: 'https://cdn.pixabay.com/m.mp4', width: 1280, height: 720, thumbnail: 't' }, small: { url: 's', width: 960 } } }] })
+    assert.strictEqual(pv[0].taiVe, 'https://cdn.pixabay.com/m.mp4', 'large rỗng thì lùi medium')
+    const pa = nguonFt.docPixabayAnh({ hits: [{ id: 3, largeImageURL: 'https://pixabay.com/get/a.png', imageWidth: 4000, imageHeight: 3000, tags: 't' }] })
+    assert.strictEqual(pa[0].duoi, 'png')
+  })
+
+  await kiem('Wikimedia: chỉ nhận PD / CC0 / CC BY; loại NC, ND, BY-SA (mặc định), TIFF gốc dùng thumburl', () => {
+    const trang = (i, ten, mime = 'image/jpeg') => ({ pageid: i, index: i, title: `File:A${i}.jpg`, imageinfo: [{
+      url: `https://upload.wikimedia.org/o${i}.tif`, thumburl: `https://upload.wikimedia.org/t${i}.jpg`, thumbwidth: 1920, thumbheight: 1280,
+      width: 5000, height: 3300, mime, descriptionurl: `https://commons.wikimedia.org/wiki/File:A${i}.jpg`,
+      extmetadata: { LicenseShortName: { value: ten }, Artist: { value: '<a href="x">Mathew Brady</a>' } } }] })
+    const json = { query: { pages: [trang(3, 'CC BY-SA 4.0'), trang(1, 'Public domain', 'image/tiff'), trang(2, 'CC BY 2.0'),
+      trang(4, 'CC BY-NC 2.0'), trang(5, 'CC BY-ND 3.0'), trang(6, 'CC0'), trang(7, 'Public domain', 'image/svg+xml')] } }
+    const ds = nguonFt.docWikimedia(json)
+    assert.deepStrictEqual(ds.map((x) => x.id), ['wikimedia-1', 'wikimedia-2', 'wikimedia-6'])
+    assert.strictEqual(ds[0].taiVe, 'https://upload.wikimedia.org/t1.jpg')
+    assert.strictEqual(ds[0].tacGia, 'Mathew Brady', 'bỏ thẻ HTML ở tên tác giả')
+    assert.strictEqual(nguonFt.docWikimedia(json, { choBySa: true }).length, 4)
+    assert.ok(!nguonFt.giayPhepChapNhan('Fair use'))
+  })
+
+  await kiem('Library of Congress: lấy ảnh lớn nhất, bỏ "#h=…", bỏ mục bị hạn chế', () => {
+    const ds = nguonFt.docLoc({ results: [
+      { title: 'Migrant Mother', url: 'https://www.loc.gov/item/2017762891/', image_url: ['https://tile.loc.gov/s.gif#h=150&w=113', 'https://tile.loc.gov/l.jpg#h=1024&w=768'], contributor: ['lange, dorothea'] },
+      { title: 'X', url: 'u2', access_restricted: true, image_url: ['a.jpg'] },
+      { title: 'Y', url: 'u3', image_url: [] }
+    ] })
+    assert.strictEqual(ds.length, 1)
+    assert.strictEqual(ds[0].taiVe, 'https://tile.loc.gov/l.jpg')
+    assert.strictEqual(ds[0].rong, 768)
+    assert.ok(/Rights/.test(ds[0].giayPhep), 'LoC phải nhắc người dùng tự xem quyền')
+  })
+
+  await kiem('chấm điểm: khớp gốc từ, phạt khung đứng, phạt video ngắn hơn cảnh', () => {
+    const goc = { loai: 'video', rong: 1920, cao: 1080, thoiLuong: 15, giayPhep: 'Pexels License' }
+    const tot = nguonFt.chamUngVien({ ...goc, tieuDe: 'river flooding aerial' }, { tuKhoa: 'river floods aerial', giayCanh: 9 })
+    const lech = nguonFt.chamUngVien({ ...goc, tieuDe: 'birthday cake' }, { tuKhoa: 'river floods aerial', giayCanh: 9 })
+    const dung = nguonFt.chamUngVien({ ...goc, rong: 1080, cao: 1920, tieuDe: 'river flooding aerial' }, { tuKhoa: 'river floods aerial', giayCanh: 9 })
+    const ngan = nguonFt.chamUngVien({ ...goc, thoiLuong: 6, tieuDe: 'river flooding aerial' }, { tuKhoa: 'river floods aerial', giayCanh: 9 })
+    assert.ok(tot.diem > lech.diem + 2, 'khớp "floods" ~ "flooding" theo gốc từ')
+    assert.ok(tot.diem > dung.diem + 2)
+    assert.ok(tot.diem > ngan.diem + 2)
+  })
+
+  await kiem('thứ tự nguồn: lịch sử → kho lưu trữ trước; video → Pexels/Pixabay; nguồn tắt bị bỏ', () => {
+    const bat = { pexels: true, pixabay: true, wikimedia: true, loc: true }
+    assert.deepStrictEqual(nguonFt.thuTuNguon('anh', '1863 lincoln portrait', bat)[0], ['wikimedia', 'anh'])
+    assert.deepStrictEqual(nguonFt.thuTuNguon('video', 'city', bat)[0], ['pexels', 'video'])
+    assert.deepStrictEqual(nguonFt.thuTuNguon('video', 'city', { pixabay: true })[0], ['pixabay', 'video'])
+  })
+
+  await kiem('tìm cho cảnh: header Authorization cho Pexels, User-Agent cho Wikimedia, dừng sớm, cache, không dùng lại footage', async () => {
+    const goi = []
+    const layGia = async (url, tuyChon) => {
+      goi.push({ url, tuyChon })
+      if (url.includes('pexels.com/v1/videos')) {
+        return { videos: [1, 2, 3, 4].map((i) => ({ id: i, url: `https://www.pexels.com/video/river-flood-aerial-${i}/`, duration: 20,
+          video_files: [{ file_type: 'video/mp4', width: 1920, height: 1080, link: `https://v/${i}.mp4` }] })) }
+      }
+      return { hits: [] }
+    }
+    const cache = nguonFt.taoCache()
+    const tk = nguonFt.taoTimKiem({ layJSONHam: layGia, khoa: { pexels: 'PK', pixabay: 'XK' }, bat: { pexels: true, pixabay: true }, cache })
+    const kq = await tk.timChoCanh({ tuKhoaTim: 'river flood aerial', kieu: 'video' }, { daDung: new Set(['pexels-v-1']) })
+    assert.strictEqual(goi.length, 1, 'đủ 3 ứng viên tốt ở Pexels thì KHÔNG gọi tiếp Pixabay')
+    assert.deepStrictEqual(goi[0].tuyChon, { tieuDe: { Authorization: 'PK' } })
+    assert.ok(!kq.ungVien.some((u) => u.id === 'pexels-v-1'), 'footage đã dùng ở cảnh khác không lặp lại')
+    await tk.timChoCanh({ tuKhoaTim: 'River Flood Aerial', kieu: 'video' })
+    assert.strictEqual(goi.length, 1, 'lần hai lấy từ cache')
+
+    const goiW = []
+    const tkW = nguonFt.taoTimKiem({ layJSONHam: async (url, t) => { goiW.push(t); return { query: { pages: [] } } }, bat: { wikimedia: true } })
+    await tkW.timChoCanh({ tuKhoaTim: '1860s portrait', kieu: 'anh' })
+    assert.ok(/ToolYTuong/.test(goiW[0].tieuDe['User-Agent']))
+  })
+
+  await kiem('lỗi nguồn: 403 → khoá sai, 429 → hết lượt; một nguồn lỗi không làm hỏng cả cảnh', async () => {
+    assert.ok(/khoá/.test(nguonFt.moTaLoi({ maHttp: 403 })))
+    assert.ok(/giới hạn/.test(nguonFt.moTaLoi({ maHttp: 429 })))
+    const tk = nguonFt.taoTimKiem({
+      layJSONHam: async (url) => {
+        if (url.includes('pexels')) { const e = new Error('HTTP 429'); e.maHttp = 429; throw e }
+        return { hits: [{ id: 1, pageURL: 'p', tags: 'city night', duration: 30, videos: { large: { url: 'https://cdn.pixabay.com/1.mp4', width: 1920, height: 1080 } } }] }
+      },
+      khoa: { pexels: 'P', pixabay: 'X' },
+      bat: { pexels: true, pixabay: true }
+    })
+    const kq = await tk.timChoCanh({ tuKhoaTim: 'city night', kieu: 'video' })
+    assert.strictEqual(kq.ungVien[0].nguon, 'Pixabay')
+    assert.ok(kq.loi.some((l) => /Pexels/.test(l)))
+  })
+
+  await kiem('cache hết hạn sau 24 giờ', () => {
+    let t = 0
+    const c = nguonFt.taoCache({}, { bayGio: () => t })
+    c.dat('a', [1])
+    t = 23 * 3600 * 1000
+    assert.deepStrictEqual(c.lay('a'), [1])
+    t = 25 * 3600 * 1000
+    assert.strictEqual(c.lay('a'), null)
+  })
+
+  // =========================================================================
+  nhom('37. Tải footage — đặt tên theo số cảnh, thay tệp cũ, bỏ tệp rác')
+
+  await kiem('tên tệp: Videos/004.mp4, Images/012.jpg — CHỈ chữ số cho CapCut', () => {
+    assert.strictEqual(taiFt.duongDanTep(4, { loai: 'video' }).split(path.sep).join('/'), 'Videos/004.mp4')
+    assert.strictEqual(taiFt.duongDanTep(12, { loai: 'anh', duoi: 'png' }).split(path.sep).join('/'), 'Images/012.png')
+    assert.strictEqual(taiFt.duongDanTep(1234, { loai: 'anh', duoi: 'jpg' }).split(path.sep).join('/'), 'Images/1234.jpg')
+  })
+
+  await kiem('cả chuỗi: tìm → tải → tệp hỏng thử ứng viên kế → đổi video sang ảnh không để lại tệp cũ', async () => {
+    const d = thuMucTam('footage-tai')
+    const kh = phanLoai.taoKeHoach(canhMau, phanLoai.locSo(canhMau))
+    kh.canh.forEach((c) => { c.loai = 'AI' })
+    Object.assign(kh.canh[2], { loai: 'FOOTAGE', kieu: 'video', tuKhoaTim: 'river flood' })
+    Object.assign(kh.canh[5], { loai: 'FOOTAGE', kieu: 'anh', tuKhoaTim: 'march washington 1963' })
+    const uv = (id, loai, taiVe) => ({ id, nguon: 'Pexels', loai, taiVe, duoi: loai === 'video' ? 'mp4' : 'jpg', tieuDe: '', diem: 3 })
+    const timGia = async ({ tuKhoaTim }) => ({
+      ungVien: tuKhoaTim === 'river flood'
+        ? [uv('hong', 'video', 'https://x/html'), uv('v2', 'video', 'https://x/v2.mp4')]
+        : [uv('a1', 'anh', 'https://x/a1.jpg')],
+      loi: []
+    })
+    const taiGia = async (url, dich) => {
+      if (url.endsWith('/html')) { fs.writeFileSync(dich, '<html>'); return { ok: true, maHttp: 200, soByte: 6, kieu: 'text/html' } }
+      const n = url.endsWith('.mp4') ? 200 * 1024 : 20 * 1024
+      fs.writeFileSync(dich, Buffer.alloc(n))
+      return { ok: true, maHttp: 200, soByte: n, kieu: '' }
+    }
+    let soLanLuu = 0
+    const kq = await taiFt.chayTimVaTai(kh, { thuMuc: d, timChoCanh: timGia, taiVeTepHam: taiGia, luu: () => { soLanLuu++ } })
+    assert.strictEqual(kq.soTai, 2)
+    assert.strictEqual(kh.canh[2].chon.id, 'v2', 'tệp HTML bị loại, lấy ứng viên kế')
+    assert.strictEqual(kh.canh[2].chon.tep, 'Videos/003.mp4')
+    assert.ok(fs.existsSync(path.join(d, 'Videos', '003.mp4')))
+    assert.ok(fs.existsSync(path.join(d, 'Images', '006.jpg')))
+    assert.ok(soLanLuu >= 2, 'lưu kế hoạch sau MỖI cảnh — tắt app giữa chừng không mất phần đã tải')
+
+    // Người dùng đổi cảnh 3 sang một ẢNH → Videos/003.mp4 phải biến khỏi Videos/.
+    await taiFt.taiChoCanh(kh.canh[2], uv('a9', 'anh', 'https://x/a9.jpg'), { thuMuc: d, taiVeTepHam: taiGia })
+    assert.ok(!fs.existsSync(path.join(d, 'Videos', '003.mp4')), 'tệp cũ phải ra khỏi Videos/, không thì CapCut lấy video cũ')
+    assert.ok(fs.existsSync(path.join(d, 'Images', '003.jpg')))
+    assert.ok(fs.readdirSync(path.join(d, taiFt.THU_MUC_BO)).length >= 1, 'tệp cũ nằm trong _footage-da-bo, không xoá hẳn')
+
+    // Trả về AI.
+    taiFt.traVeAi(kh, 6, d)
+    assert.ok(!fs.existsSync(path.join(d, 'Images', '006.jpg')))
+    assert.strictEqual(kh.canh[5].loai, 'AI')
+
+    const ktra = xuatCanh.kiemDu(6, { Videos: xuatCanh.docTenTrongThuMuc(path.join(d, 'Videos')), Images: xuatCanh.docTenTrongThuMuc(path.join(d, 'Images')) })
+    assert.deepStrictEqual(ktra.thieuHinh, [1, 2, 4, 5, 6])
+    assert.deepStrictEqual(ktra.trungSo, [])
+  })
+
+  await kiem('kế hoạch lưu nguyên tử; JSON vỡ thì BÁO VỠ, không coi như chưa có', () => {
+    const d = thuMucTam('ke-hoach')
+    taiFt.ghiKeHoach(d, { canh: [{ so: 1 }] })
+    assert.strictEqual(taiFt.docKeHoach(d).canh[0].so, 1)
+    fs.writeFileSync(path.join(d, taiFt.TEN_KE_HOACH), '{ "canh": [')
+    assert.throws(() => taiFt.docKeHoach(d), /bị hỏng/)
+    assert.strictEqual(taiFt.docKeHoach(thuMucTam('trong')), null)
+  })
+
+  await kiem('CSP cho phép ảnh xem trước của Pexels / Pixabay / Wikimedia / LoC', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8')
+    const csp = (html.match(/Content-Security-Policy" content="([^"]+)"/) || [])[1] || ''
+    const img = (csp.match(/img-src ([^;]+)/) || [])[1] || ''
+    for (const h of ['https://images.pexels.com', 'https://cdn.pixabay.com', 'https://pixabay.com', 'https://upload.wikimedia.org', 'https://tile.loc.gov']) {
+      assert.ok(img.split(/\s+/).includes(h), 'thiếu ' + h)
+    }
+  })
+
+  await kiem('taiVeTep ghi tệp tạm rồi mới đổi tên (tải hỏng không để tệp cụt mang số cảnh)', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'goi-mang.js'), 'utf8')
+    assert.ok(/\.dang-tai'/.test(src) && /renameSync\(tam, dich\)/.test(src))
+  })
+
+  // =========================================================================
   console.log('\n' + '─'.repeat(58))
   console.log(`TẦNG 1: ${soQua} qua, ${soTruot.length} truột`)
   if (soTruot.length) {

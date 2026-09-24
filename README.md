@@ -11,6 +11,58 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.5.0 — màn Footage thật: xen ảnh/video có sẵn với ảnh Flow mà vẫn đúng thứ tự
+
+Kịch bản kể chuyện có những cảnh **tìm được hình thật** (thành phố, sông, sự kiện
+lịch sử, người thật có ảnh chân dung). Làm các cảnh đó bằng Flow vừa tốn credit vừa
+kém thật. Màn mới **Footage thật** đi 6 bước, bước nào cũng có thanh tiến độ:
+
+1. **Cắt cảnh → `canh.xlsx`** đúng 2 cột **STT · Cảnh**, đủ mọi cảnh (dùng đọc giọng).
+2. **Phân loại FOOTAGE / AI.** Lọc sơ bằng luật (miễn phí) gạt thẳng cảnh chắc chắn
+   là AI (thoại, cảm xúc, nhân vật Kinh Thánh, phép lạ). Cảnh còn lại gửi Claude theo
+   lô — Claude xác nhận và viết từ khóa tìm kiếm tiếng Anh. Phân vân thì chọn AI.
+3. **Tìm và tự tải** bản điểm cao nhất (khớp từ khóa theo gốc từ, khung ngang, video
+   dài hơn cảnh, ≥1280 px), tên theo số cảnh: `Videos/004.mp4`, `Images/012.jpg`.
+   Không lặp một footage ở hai cảnh. Tải hỏng tự thử bản kế.
+4. **Duyệt nhanh**: bấm ảnh nhỏ để đổi bản, sửa từ khóa rồi **Tìm lại**, hoặc
+   **Trả về AI** (tệp chuyển vào `_footage-da-bo/`, không xoá hẳn).
+5. **`canh-cho-flow.xlsx`**: bỏ dòng đã có footage, **giữ số gốc** (1, 2, 5, 6…), kèm
+   `chuoi-so-flow.txt` (`1-3,5-11,…`) và `ghi-cong-footage.txt` để dán vào mô tả.
+6. **Gom tệp Flow + Kiểm đủ**: chép `05.png` / `05_1.mp4` của Flow thành
+   `Images/005.png` / `Videos/005.mp4`, rồi báo cảnh thiếu hình, số có hai tệp, số
+   vượt tổng cảnh, thiếu giọng đọc — trước khi đưa sang CapCut Draft Studio.
+
+**Vì sao không bao giờ lệch thứ tự.** Số cảnh là "số căn cước": đánh một lần lúc
+cắt cảnh, không bao giờ đánh lại. Ba tool đều khớp theo số này:
+
+- Flow Automation Studio **đã có sẵn** ô *"Dùng danh sách số tuỳ chọn"*: nạp
+  `prompts.txt` **đủ dòng**, dán chuỗi số, Flow chỉ chạy các số đó và đặt tên tệp
+  theo số gốc. Không phải sửa Flow. (Bất biến "prompts.txt liên tục từ 1" giữ nguyên.)
+- CapCut Draft Studio ghép `Audio/5.mp3` với `Videos/5.mp4` hoặc `Images/5.jpg`, tên
+  tệp phải **chỉ gồm chữ số** — `005` được, `05_1` thì không; vì vậy mới có bước Gom.
+- Kế hoạch footage lưu trong thư mục dựng kèm **chữ của từng cảnh**. Cắt lại cảnh
+  theo cách khác (đổi từ/cảnh, gộp cảnh, sửa kịch bản) thì số cảnh dịch đi — tool so
+  từng cảnh và **chặn** xuất/tìm khi không khớp, vì footage cảnh 12 rơi vào chỗ câu
+  khác là lỗi im lặng tệ nhất của cả chuỗi. Lập kế hoạch mới thì tệp footage cũ
+  chuyển vào `_footage-da-bo/` để không bị ghép nhầm.
+
+**Nguồn — chỉ loại dùng thương mại được** (người dùng đã chốt):
+
+| Nguồn | Khoá | Ghi chú |
+|---|---|---|
+| Pexels | miễn phí | video + ảnh stock; **200 lượt/giờ** |
+| Pixabay | miễn phí | video + ảnh stock; bắt buộc cache 24 giờ (tool có) |
+| Wikimedia Commons | không | ảnh lịch sử, người thật; chỉ nhận Public domain / CC0 / CC BY. NC, ND loại thẳng; CC BY-SA mặc định tắt |
+| Library of Congress | không | ảnh tư liệu Mỹ; kết quả tìm không ghi giấy phép — phải xem mục "Rights" trên trang gốc |
+
+Không tải video YouTube, không clip tin tức: kênh kiếm tiền dính Content ID / chính
+sách "nội dung dùng lại" là mất cả kênh. National Archives chưa có vì API bản mới
+đòi xin khoá qua email.
+
+**Màn Prompt ảnh** có ô *"Bỏ cảnh đã có footage"*: chỉ xin Claude mô tả cảnh AI
+(số trong ngoặc vuông vẫn là số gốc). Xuất cho Flow thì `prompts.txt` vẫn đủ dòng,
+kèm `chuoi-so-flow.txt` nếu kế hoạch khớp bộ cảnh.
+
 ### 0.4.0 — thumbnail, ô tick "Video đã chọn", màn Đề xuất video, ưu tiên kênh nhỏ Mỹ
 
 **Thumbnail + ô tick ở mọi bảng kết quả** (Ý tưởng, Đề xuất video, Kênh theo dõi).
@@ -372,8 +424,8 @@ mới** trong app tự thấy bản mới.
 
 | Tầng | Lệnh | Bắt được gì |
 |---|---|---|
-| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu) |
-| 2. Giao diện | `YT_SMOKE=1 npx electron --no-sandbox .` | thiếu màn, thiếu phần tử, **thiếu khoá cài đặt**, lớp phủ che giao diện, **thumbnail có vẽ ra không**; nạp dữ liệu mẫu rồi chụp ảnh từng màn vào `shots/` |
+| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ** (191 ca) |
+| 2. Giao diện | `YT_SMOKE=1 npx electron --no-sandbox .` | thiếu màn, thiếu phần tử, **thiếu khoá cài đặt**, lớp phủ che giao diện, **thumbnail và ảnh xem trước footage có vẽ ra không**; nạp dữ liệu mẫu rồi chụp ảnh từng màn vào `shots/` |
 
 Tầng 2 chụp ảnh xong **phải mở ảnh ra xem bằng mắt**. Nút bị cắt, chữ vỡ dấu,
 khoảng trống lệch — không thứ nào ném exception.
@@ -393,6 +445,13 @@ triển không có. Không được hiểu là "đã chạy tốt":
   mẫu dựng theo cấu trúc YouTube đang dùng; cấu trúc thật có thể lệch, và chưa
   biết YouTube có hỏi xác minh sau bao nhiêu trang
 - Tải thumbnail từ `i.ytimg.com` thật (tầng 1 dùng hàm mạng giả)
+- **Footage: gọi Pexels / Pixabay / Wikimedia / Library of Congress thật** và tải
+  video thật. URL và cách đọc kết quả đối chiếu tài liệu chính thức (9/2026), nhưng
+  máy phát triển bị chặn ra các trang này — cấu trúc trả về thật có thể lệch
+- Chất lượng **lọc sơ** và **từ khóa Claude** trên kịch bản thật của kênh (mới thử
+  bằng câu mẫu)
+- Flow thật nhận chuỗi số và đặt tên đúng số gốc (đã đối chiếu mã nguồn Flow 2.8.6,
+  chưa chạy thật); CapCut Draft Studio thật dựng thư mục có footage xen ảnh Flow
 
 Khi có lỗi: mở màn **Nhật ký**, gửi nguyên file log. **Dòng cuối cùng** định vị
 chính xác chỗ chết — ảnh chụp màn hình thường không đủ.

@@ -3,13 +3,15 @@
 
 const THOI_CHO_MAC_DINH = 20000
 
-async function layJSON(url, { thoiCho = THOI_CHO_MAC_DINH } = {}) {
+// tieuDe: header thêm (Pexels đòi khoá ở header Authorization, Wikimedia đòi
+// User-Agent có địa chỉ liên hệ).
+async function layJSON(url, { thoiCho = THOI_CHO_MAC_DINH, tieuDe = {} } = {}) {
   const huy = new AbortController()
   const hen = setTimeout(() => huy.abort(), thoiCho)
   try {
     const traLoi = await fetch(url, {
       signal: huy.signal,
-      headers: { 'Accept-Language': 'en-US,en;q=0.9' }
+      headers: { 'Accept-Language': 'en-US,en;q=0.9', ...tieuDe }
     })
     const chu = await docChu(traLoi)
     if (!traLoi.ok) {
@@ -108,4 +110,39 @@ async function layNhiPhan(url, { thoiCho = THOI_CHO_MAC_DINH } = {}) {
   }
 }
 
-module.exports = { layJSON, layChu, layGoiY, layNhiPhan, phanTichGoiY, urlGoiY }
+// Tải tệp LỚN (video footage 20–150 MB) thẳng xuống đĩa theo từng khúc — không
+// dồn cả tệp vào bộ nhớ như layNhiPhan. Ghi ra "<đích>.dang-tai" rồi mới đổi
+// tên: tải hỏng giữa chừng thì không để lại tệp cụt mang tên số cảnh (CapCut sẽ
+// nhận nhầm tệp cụt đó là hình của cảnh).
+async function taiVeTep(url, dich, { thoiCho = 300000, tieuDe = {}, baoByte = null } = {}) {
+  const fs = require('fs')
+  const huy = new AbortController()
+  const hen = setTimeout(() => huy.abort(), thoiCho)
+  const tam = dich + '.dang-tai'
+  try {
+    const traLoi = await fetch(url, { signal: huy.signal, headers: tieuDe, redirect: 'follow' })
+    if (!traLoi.ok || !traLoi.body) return { ok: false, maHttp: traLoi.status, soByte: 0 }
+    const tong = Number(traLoi.headers.get('content-length')) || 0
+    const kieu = traLoi.headers.get('content-type') || ''
+    const ghi = fs.createWriteStream(tam)
+    let da = 0
+    try {
+      for await (const khuc of traLoi.body) {
+        da += khuc.length
+        if (!ghi.write(khuc)) await new Promise((r) => ghi.once('drain', r))
+        if (baoByte) baoByte(da, tong)
+      }
+    } finally {
+      await new Promise((r) => ghi.end(r))
+    }
+    fs.renameSync(tam, dich)
+    return { ok: true, maHttp: traLoi.status, soByte: da, kieu }
+  } catch (e) {
+    try { require('fs').unlinkSync(tam) } catch (_) {}
+    throw e
+  } finally {
+    clearTimeout(hen)
+  }
+}
+
+module.exports = { layJSON, layChu, layGoiY, layNhiPhan, taiVeTep, phanTichGoiY, urlGoiY }

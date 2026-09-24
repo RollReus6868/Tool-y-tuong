@@ -22,6 +22,9 @@ let canhHienTai = []
 let moTaTheoCanh = {}
 let promptThangHienTai = {}
 let cacPromptHienTai = []
+let thuMucDung = ''            // thư mục dựng của video (= INPUT của CapCut Draft Studio)
+let keHoachFt = null           // kế hoạch footage: nhãn FOOTAGE/AI, từ khóa, tệp đã tải
+let locFt = 'footage'
 let baoCaoHienTai = null
 
 let videoDaChon = []          // danh sách "Video đã chọn" — lưu ở tiến trình chính
@@ -118,6 +121,7 @@ function moMan(ten) {
   $$('.muc').forEach((b) => b.classList.toggle('chon', b.dataset.man === ten))
 
   if (ten === 'nhat-ky') taiNhatKy()
+  if (ten === 'footage') { veNguonFootage(); veFootage() }
 
   // Trình duyệt là một lớp phủ THẬT nằm đè lên cửa sổ, không phải phần tử HTML.
   // Rời màn là phải ẩn đi, nếu không nó che mất màn khác và người dùng tưởng
@@ -1045,7 +1049,9 @@ $('#nut-prompt-mo-ta').onclick = async () => {
   const lo = Number($('#o-lo-thu').value) || 1
   const moiLo = caiDatHienTai ? Number(caiDatHienTai.soCanhMoiLo) || 50 : 50
   const kieu = $('#o-kieu-mo-ta').value
-  const kq = await window.api.promptMoTa(canhHienTai, lo, moiLo, kieu)
+  const boSo = $('#o-bo-canh-footage').checked ? soCoTepFootage() : []
+  const kq = await window.api.promptMoTa(canhHienTai, lo, moiLo, kieu, boSo)
+  if (!kq.prompt) { await baoTin('Không còn cảnh nào cần mô tả (mọi cảnh đã có footage?).'); return }
   await chepVaBao(kq.prompt, $('#ghi-chu-lo'))
   $('#ghi-chu-lo').textContent +=
     ` · lô ${kq.loThu}/${kq.tongLo} (${kq.soCanhTrongLo} cảnh, kiểu ${kq.kieu === 'thuong' ? 'prompt thường' : 'JSON'})`
@@ -1111,10 +1117,11 @@ $('#nut-tao-prompt').onclick = async () => {
 
 $('#nut-xuat-prompt').onclick = async () => {
   if (!cacPromptHienTai.length) { await baoTin('Bấm "Sinh toàn bộ prompt" trước đã.'); return }
-  const kq = await window.api.xuatPromptAnh(canhHienTai, cacPromptHienTai, duAnHienTai)
+  const kq = await window.api.xuatPromptAnh(canhHienTai, cacPromptHienTai, duAnHienTai, keHoachFt)
   if (kq.huy) return
   if (!kq.ok) { await baoTin('Xuất thất bại.'); return }
-  $('#ghi-chu-xuat').textContent = `Đã xuất ${kq.soPrompt} prompt ra ${kq.thuMuc}`
+  $('#ghi-chu-xuat').textContent = `Đã xuất ${kq.soPrompt} prompt ra ${kq.thuMuc}` +
+    (kq.chuoiSoFlow ? ` · chuoi-so-flow.txt: ${kq.chuoiSoFlow}` : '')
   $('#ghi-chu-xuat').className = 'ghi-chu ghi-chu-xanh'
   datTienDo({ phanTram: 100, viec: 'Xuất prompt xong', chiTiet: kq.thuMuc, trangThai: 'xong' })
 }
@@ -2032,6 +2039,350 @@ $('#nut-tim-72h').onclick = async () => {
 }
 $('#nut-tai-thumb-hot').onclick = () => taiThumbCuaBang($('#bang-hot'))
 
+
+// ---------------------------------------------------------------------------
+// Footage thật
+//
+// Số cảnh là "số căn cước" — không bao giờ đánh lại. Mọi thao tác ở đây gửi
+// cả kế hoạch sang tiến trình chính, bên đó ghi ra footage-ke-hoach.json trong
+// thư mục dựng sau MỖI thay đổi.
+// ---------------------------------------------------------------------------
+function soCoTepFootage() {
+  if (!keHoachFt) return []
+  return keHoachFt.canh.filter((c) => c.loai === 'FOOTAGE' && c.chon && c.chon.tep).map((c) => c.so)
+}
+
+function canCoThuMuc() {
+  if (thuMucDung) return true
+  baoTin('Chưa chọn thư mục dựng (khối "Thư mục dựng của video này" ở đầu màn).')
+  return false
+}
+
+async function napThuMucDung(kq) {
+  if (!kq || kq.huy) return
+  if (!kq.ok) { await baoTin(kq.loi || 'Không mở được thư mục.'); return }
+  thuMucDung = kq.thuMuc
+  keHoachFt = kq.keHoach || null
+  $('#thu-muc-dung').innerHTML = `Thư mục dựng: <code>${thoat(thuMucDung)}</code>` +
+    (keHoachFt ? ` · đã có kế hoạch ${keHoachFt.canh.length} cảnh` : ' · chưa có kế hoạch footage') +
+    (kq.loiKeHoach ? `<div class="canh-bao-manh">${thoat(kq.loiKeHoach)}</div>` : '')
+  // Mở lại app: khôi phục bộ cảnh từ kế hoạch để khỏi phải cắt lại.
+  if (keHoachFt && !canhHienTai.length && keHoachFt.canh.every((c) => c.chu)) {
+    canhHienTai = keHoachFt.canh.map((c) => ({ so: c.so, ten: c.ten, chu: c.chu, soTu: c.soTu, giayUoc: c.giayUoc }))
+    veBangCanh()
+    $('#ghi-chu-buoc1-ft').textContent = `Đã nạp lại ${canhHienTai.length} cảnh từ kế hoạch.`
+    $('#ghi-chu-buoc1-ft').className = 'ghi-chu ghi-chu-xanh'
+  }
+  await kiemKhopFt()
+  veFootage()
+}
+
+// Kế hoạch phải khớp đúng bộ cảnh đang có. Không khớp thì CHẶN xuất/tìm —
+// footage cảnh 12 rơi vào chỗ câu khác là lỗi im lặng tệ nhất của cả chuỗi.
+async function kiemKhopFt(imLang = false) {
+  if (!keHoachFt || !canhHienTai.length) return true
+  const r = await window.api.kiemKhopKeHoach(canhHienTai, keHoachFt)
+  if (!r.khop && !imLang) {
+    $('#ghi-chu-buoc1-ft').textContent = 'KẾ HOẠCH KHÔNG KHỚP bộ cảnh hiện tại: ' + r.lyDo + ' Bấm "Lọc sơ" để lập kế hoạch mới.'
+    $('#ghi-chu-buoc1-ft').className = 'ghi-chu canh-bao-manh'
+  }
+  return r.khop
+}
+
+$('#nut-chon-thu-muc-dung').onclick = async () => {
+  if (!duAnHienTai) { await napThuMucDung(await window.api.chonThuMucDung('', true)); return }
+  await napThuMucDung(await window.api.chonThuMucDung(duAnHienTai, false))
+}
+$('#nut-chon-thu-muc-khac').onclick = async () => napThuMucDung(await window.api.chonThuMucDung(duAnHienTai, true))
+$('#nut-mo-thu-muc-dung').onclick = async () => { if (canCoThuMuc()) await window.api.moThuMuc(thuMucDung) }
+
+$('#nut-cat-canh-ft').onclick = async () => {
+  const gop = Number($('#o-gop-canh').value) || 1
+  const kq = await window.api.catCanh($('#o-kich-ban-anh').value.trim(), duAnHienTai, gop)
+  if (!kq.ok) { await baoTin(kq.loi + ' (Kịch bản lấy từ ô của màn Prompt ảnh hoặc từ dự án.)'); return }
+  canhHienTai = kq.canh
+  moTaTheoCanh = {}
+  promptThangHienTai = {}
+  cacPromptHienTai = []
+  veThongKeCanh(kq.thongKe)
+  veBangCanh()
+  $('#ghi-chu-buoc1-ft').textContent = `${kq.thongKe.soCanh} cảnh · ${kq.thongKe.tongPhut} phút`
+  $('#ghi-chu-buoc1-ft').className = 'ghi-chu ghi-chu-xanh'
+  await kiemKhopFt()
+  veFootage()
+}
+
+$('#nut-xuat-canh-xlsx').onclick = async () => {
+  if (!canhHienTai.length) { await baoTin('Cắt cảnh trước đã.'); return }
+  if (!canCoThuMuc()) return
+  const kq = await window.api.xuatCanhXlsx(thuMucDung, canhHienTai)
+  if (!kq.ok) { await baoTin(kq.loi); return }
+  $('#ghi-chu-buoc1-ft').textContent = `Đã ghi ${kq.duongDan} (${canhHienTai.length} dòng)`
+  $('#ghi-chu-buoc1-ft').className = 'ghi-chu ghi-chu-xanh'
+  datTienDo({ phanTram: 100, viec: 'Xuất canh.xlsx xong', chiTiet: kq.duongDan, trangThai: 'xong' })
+}
+
+$('#nut-loc-so').onclick = async () => {
+  if (!canhHienTai.length) { await baoTin('Cắt cảnh trước đã.'); return }
+  if (!canCoThuMuc()) return
+  if (keHoachFt && (await kiemKhopFt(true))) {
+    const daLam = keHoachFt.canh.filter((c) => (c.chon && c.chon.tep) || c.nguonPhanLoai !== 'luat').length
+    if (daLam && !(await hoiCo(`Kế hoạch hiện tại đã có ${daLam} cảnh được Claude/anh sửa hoặc đã tải footage. ` +
+      'Lọc lại sẽ lập kế hoạch MỚI và chuyển mọi tệp footage cũ vào _footage-da-bo. Làm lại?', 'Lập kế hoạch mới'))) return
+  }
+  const kq = await window.api.lapKeHoachFootage(canhHienTai, thuMucDung)
+  keHoachFt = kq.keHoach
+  const dem = (f) => keHoachFt.canh.filter(f).length
+  $('#ghi-chu-phan-loai').textContent =
+    `Lọc sơ xong: ${dem((c) => c.loai === 'FOOTAGE')} khá chắc FOOTAGE · ${dem((c) => c.canHoi)} cảnh cần hỏi Claude · ` +
+    `${dem((c) => !c.canHoi)} cảnh chắc là AI` + (kq.soDon ? ` · dọn ${kq.soDon} tệp của kế hoạch cũ` : '')
+  $('#ghi-chu-phan-loai').className = 'ghi-chu ghi-chu-xanh'
+  $('#o-lo-phan-loai').value = 1
+  locFt = 'can-hoi'
+  veFootage()
+}
+
+$('#nut-prompt-phan-loai').onclick = async () => {
+  if (!keHoachFt) { await baoTin('Bấm "Lọc sơ" trước đã.'); return }
+  const lo = Number($('#o-lo-phan-loai').value) || 1
+  const moiLo = caiDatHienTai ? Number(caiDatHienTai.soCanhMoiLo) || 50 : 50
+  const kq = await window.api.promptPhanLoai(keHoachFt, lo, moiLo)
+  if (!kq.tongLo) { await baoTin('Không còn cảnh nào chờ Claude xác nhận.'); return }
+  await chepVaBao(kq.prompt, $('#ghi-chu-phan-loai'))
+  $('#ghi-chu-phan-loai').textContent += ` · lô ${kq.loThu}/${kq.tongLo} (${kq.soCanh} cảnh, còn ${kq.tongCanHoi} cảnh chờ)`
+  $('#o-lo-phan-loai').max = kq.tongLo
+}
+
+$('#nut-doc-phan-loai').onclick = async () => {
+  if (!keHoachFt) { await baoTin('Bấm "Lọc sơ" trước đã.'); return }
+  const kq = await window.api.docPhanLoai($('#o-tra-loi-phan-loai').value, keHoachFt, thuMucDung)
+  if (!kq.ok) {
+    $('#ket-qua-phan-loai').textContent = kq.loi
+    $('#ket-qua-phan-loai').className = 'ghi-chu ghi-chu-vang'
+    return
+  }
+  keHoachFt = kq.keHoach
+  const conCho = keHoachFt.canh.filter((c) => c.canHoi).length
+  $('#ket-qua-phan-loai').textContent = `Đọc ${kq.soDoc} cảnh · đổi ${kq.soDoi} nhãn · còn ${conCho} cảnh chờ Claude` +
+    (kq.canhBao ? ' · ' + kq.canhBao : '')
+  $('#ket-qua-phan-loai').className = kq.canhBao ? 'ghi-chu ghi-chu-vang' : 'ghi-chu ghi-chu-xanh'
+  $('#o-tra-loi-phan-loai').value = ''
+  // Cảnh vừa được xác nhận biến khỏi danh sách "chờ", nên lô kế tiếp lại là lô 1.
+  $('#o-lo-phan-loai').value = 1
+  if (!conCho) locFt = 'footage'
+  veFootage()
+}
+
+async function veNguonFootage() {
+  const n = await window.api.nguonFootage()
+  const muc = [
+    ['Pexels', n.bat.pexels, n.coKhoaPexels ? 'đã tắt trong Cài đặt' : 'chưa có khoá'],
+    ['Pixabay', n.bat.pixabay, n.coKhoaPixabay ? 'đã tắt trong Cài đặt' : 'chưa có khoá'],
+    ['Wikimedia Commons', n.bat.wikimedia, 'đã tắt'],
+    ['Library of Congress', n.bat.loc, 'đã tắt']
+  ]
+  $('#trang-thai-nguon').innerHTML = 'Nguồn: ' + muc.map(([ten, bat, vi]) =>
+    `<span class="${bat ? 'manh' : 'canh-bao-manh'}">${bat ? '✔' : '✘'} ${ten}${bat ? '' : ' (' + vi + ')'}</span>`).join(' · ') +
+    (!n.bat.pexels && !n.bat.pixabay ? '<div class="canh-bao-manh">Không có Pexels/Pixabay thì gần như không có VIDEO — chỉ còn ảnh tư liệu. Lấy khoá miễn phí ở Cài đặt → Footage thật.</div>' : '')
+}
+
+$('#nut-tim-tai-ft').onclick = async () => {
+  if (!keHoachFt) { await baoTin('Bấm "Lọc sơ" (và nên hỏi Claude) trước đã.'); return }
+  if (!canCoThuMuc()) return
+  if (!(await kiemKhopFt())) { await baoTin('Kế hoạch không khớp bộ cảnh hiện tại — xem dòng cảnh báo ở Bước 1.'); return }
+  const conCho = keHoachFt.canh.filter((c) => c.canHoi).length
+  if (conCho && !(await hoiCo(`Còn ${conCho} cảnh chưa qua Claude — các cảnh này sẽ KHÔNG được tìm (tạm tính là AI, trừ cảnh luật đã gắn FOOTAGE). Tìm luôn?`, 'Tìm luôn'))) return
+  $('#nut-tim-tai-ft').disabled = true
+  $('#ghi-chu-tim-tai').textContent = 'Đang tìm và tải…'
+  try {
+    const kq = await window.api.timTaiFootage(thuMucDung, keHoachFt)
+    if (kq.keHoach) keHoachFt = kq.keHoach
+    if (!kq.ok) { await baoTin(kq.loi); return }
+    $('#ghi-chu-tim-tai').textContent = `Tải ${kq.soTai}/${kq.soCan} cảnh · ${kq.soKhongThay} cảnh không tìm ra` +
+      (kq.loi.length ? ` · ${kq.loi.length} lỗi (xem Nhật ký)` : '')
+    $('#ghi-chu-tim-tai').className = kq.loi.length ? 'ghi-chu ghi-chu-vang' : 'ghi-chu ghi-chu-xanh'
+    locFt = 'footage'
+  } finally {
+    $('#nut-tim-tai-ft').disabled = false
+    veFootage()
+  }
+}
+
+$('#nut-dung-ft').onclick = () => window.api.dungFootage()
+
+$$('#loc-footage .chip').forEach((b) => {
+  b.onclick = () => { locFt = b.dataset.loc; veFootage() }
+})
+
+function locDongFootage() {
+  if (!keHoachFt) return []
+  const ds = keHoachFt.canh
+  if (locFt === 'footage') return ds.filter((c) => c.loai === 'FOOTAGE')
+  if (locFt === 'can-hoi') return ds.filter((c) => c.canHoi)
+  if (locFt === 'khong-thay') return ds.filter((c) => c.loai === 'FOOTAGE' && !(c.chon && c.chon.tep))
+  if (locFt === 'ai') return ds.filter((c) => c.loai === 'AI')
+  return ds
+}
+
+function nhanFt(c) {
+  if (c.loai === 'FOOTAGE' && c.chon && c.chon.tep) return '<span class="nhan-video nhan-ft-co">FOOTAGE</span>'
+  if (c.loai === 'FOOTAGE') return `<span class="nhan-video nhan-ft-thieu">${c.khongThay ? 'KHÔNG THẤY' : 'CHƯA TẢI'}</span>`
+  if (c.canHoi) return '<span class="nhan-video nhan-ft-cho">CHỜ CLAUDE</span>'
+  return '<span class="nhan-video nhan-ft-ai">AI</span>'
+}
+
+function veFootage() {
+  $$('#loc-footage .chip').forEach((b) => b.classList.toggle('chip-chon', b.dataset.loc === locFt))
+  const soFt = soCoTepFootage().length
+  $('#so-canh-footage-anh').textContent = soFt ? `(${soFt} cảnh có footage)` : '(chưa có kế hoạch footage)'
+
+  const bang = $('#bang-footage')
+  if (!keHoachFt) {
+    $('#tom-tat-footage').innerHTML = ''
+    bang.innerHTML = '<tbody><tr><td class="ghi-chu" style="padding:18px">Chưa có kế hoạch. Cắt cảnh → Lọc sơ.</td></tr></tbody>'
+    return
+  }
+  const ds = keHoachFt.canh
+  const dem = (f) => ds.filter(f).length
+  $('#tom-tat-footage').innerHTML = [
+    [ds.length, 'tổng cảnh'],
+    [soFt, 'có footage'],
+    [dem((c) => c.loai === 'FOOTAGE' && !(c.chon && c.chon.tep)), 'FOOTAGE chưa có tệp'],
+    [dem((c) => c.canHoi), 'chờ Claude'],
+    [ds.length - soFt, 'cảnh cho Flow']
+  ].map(([so, chu]) => `<div><div class="so-to">${so}</div><span>${chu}</span></div>`).join('')
+
+  const dong = locDongFootage()
+  bang.innerHTML = `<thead><tr><th>STT</th><th>Nhãn</th><th>Cảnh</th><th>Tìm gì</th><th>Đang dùng</th><th>Bản khác (bấm để đổi)</th></tr></thead>`
+  const than = document.createElement('tbody')
+  if (!dong.length) than.innerHTML = '<tr><td colspan="6" class="ghi-chu" style="padding:18px">Không có cảnh nào trong nhóm này.</td></tr>'
+  for (const c of dong.slice(0, 200)) {
+    const tr = document.createElement('tr')
+    tr.dataset.so = c.so
+    const chon = c.chon
+    const dangDung = chon && chon.tep
+      ? `<div class="o-thumb-ft"><img src="${thoat(chon.thumb || '')}" alt="" loading="lazy"></div>
+         <div class="ghi-chu"><b>${thoat(chon.tep)}</b><br>${thoat(chon.nguon)} · ${thoat(chon.giayPhep || '')}
+         ${chon.loai === 'video' ? ` · ${chon.thoiLuong || '?'}s` : ''}${chon.rong ? ` · ${chon.rong}px` : ''}
+         ${chon.trang ? `<br><a href="#" data-ngoai="${thoat(chon.trang)}">trang gốc</a>` : ''}</div>`
+      : '<span class="ghi-chu">—</span>'
+    const khac = (c.ungVien || []).filter((u) => !chon || u.id !== chon.id).map((u) =>
+      `<button class="the-ung-vien" data-id="${thoat(u.id)}" title="${thoat(u.nguon + ' · ' + (u.tieuDe || '') + ' · điểm ' + u.diem)}">
+         <img src="${thoat(u.thumb || '')}" alt="" loading="lazy"><span>${u.loai === 'video' ? '▶ ' + (u.thoiLuong || '?') + 's' : 'ảnh'}</span></button>`).join('')
+    tr.innerHTML = `
+      <td class="so-lieu">${c.so}</td>
+      <td>${nhanFt(c)}</td>
+      <td class="o-chu-canh">${thoat(c.chu || '')}${c.lyDo ? `<div class="ghi-chu">${thoat(c.lyDo)}</div>` : ''}</td>
+      <td class="o-tim-ft">
+        <input class="o-tu-khoa-ft" value="${thoat(c.tuKhoaTim || '')}" placeholder="từ khóa tiếng Anh">
+        <select class="o-kieu-ft"><option value="video"${c.kieu !== 'anh' ? ' selected' : ''}>video</option><option value="anh"${c.kieu === 'anh' ? ' selected' : ''}>ảnh</option></select>
+        <div class="hang-nut-nho">
+          <button class="nut nut-phu nut-nho nut-tim-lai-ft">${c.loai === 'FOOTAGE' ? 'Tìm lại' : 'Đổi sang footage'}</button>
+          ${c.loai === 'FOOTAGE' ? '<button class="nut nut-do nut-ve-ai">Trả về AI</button>' : ''}
+        </div>
+      </td>
+      <td class="o-dang-dung">${dangDung}</td>
+      <td class="o-ban-khac">${khac || '<span class="ghi-chu">—</span>'}</td>`
+    than.append(tr)
+  }
+  if (dong.length > 200) {
+    const tr = document.createElement('tr')
+    tr.innerHTML = `<td colspan="6" class="ghi-chu" style="padding:12px">…và ${dong.length - 200} cảnh nữa — lọc theo nhóm để xem.</td>`
+    than.append(tr)
+  }
+  bang.append(than)
+}
+
+$('#bang-footage').addEventListener('click', async (su) => {
+  const tr = su.target.closest('tr[data-so]')
+  if (!tr || !keHoachFt) return
+  const so = Number(tr.dataset.so)
+
+  const uv = su.target.closest('.the-ung-vien')
+  if (uv) {
+    if (!canCoThuMuc()) return
+    const kq = await window.api.chonUngVien(thuMucDung, keHoachFt, so, uv.dataset.id)
+    if (kq.keHoach) keHoachFt = kq.keHoach
+    if (!kq.ok) await baoTin(kq.loi)
+    veFootage()
+    return
+  }
+  if (su.target.closest('.nut-ve-ai')) {
+    const kq = await window.api.doiLoaiCanh(thuMucDung, keHoachFt, so, 'AI')
+    keHoachFt = kq.keHoach
+    veFootage()
+    return
+  }
+  if (su.target.closest('.nut-tim-lai-ft')) {
+    if (!canCoThuMuc()) return
+    const tuKhoa = tr.querySelector('.o-tu-khoa-ft').value.trim()
+    if (!tuKhoa) { await baoTin('Nhập từ khóa tìm kiếm tiếng Anh cho cảnh này đã.'); return }
+    const kieu = tr.querySelector('.o-kieu-ft').value
+    const doi = await window.api.doiLoaiCanh(thuMucDung, keHoachFt, so, 'FOOTAGE', tuKhoa, kieu)
+    keHoachFt = doi.keHoach
+    const kq = await window.api.timTaiFootage(thuMucDung, keHoachFt, [so])
+    if (kq.keHoach) keHoachFt = kq.keHoach
+    if (!kq.ok) await baoTin(kq.loi)
+    else if (!kq.soTai) await baoTin(`Không tìm/tải được footage cho cảnh ${so}` + (kq.loi.length ? ': ' + kq.loi.map((l) => l.loi).join(' · ') : '. Thử từ khóa khác, ngắn hơn.'))
+    veFootage()
+  }
+})
+
+$('#nut-xuat-loc').onclick = async () => {
+  if (!keHoachFt) { await baoTin('Chưa có kế hoạch footage.'); return }
+  if (!canCoThuMuc()) return
+  if (!(await kiemKhopFt())) { await baoTin('Kế hoạch không khớp bộ cảnh hiện tại — xem dòng cảnh báo ở Bước 1.'); return }
+  const kq = await window.api.xuatExcelLoc(thuMucDung, keHoachFt)
+  if (!kq.ok) { await baoTin(kq.loi); return }
+  $('#o-chuoi-so-flow').value = kq.chuoi
+  $('#ghi-chu-xuat-loc').textContent = `canh-cho-flow.xlsx: ${kq.soConLai} cảnh cho Flow · ${kq.soFootage} cảnh footage · kèm chuoi-so-flow.txt + ghi-cong-footage.txt`
+  $('#ghi-chu-xuat-loc').className = 'ghi-chu ghi-chu-xanh'
+  datTienDo({ phanTram: 100, viec: 'Xuất Excel đã lọc xong', chiTiet: thuMucDung, trangThai: 'xong' })
+}
+
+$('#nut-chep-chuoi-so').onclick = async () => {
+  const v = $('#o-chuoi-so-flow').value
+  if (!v) { await baoTin('Xuất Excel đã lọc trước để có chuỗi số.'); return }
+  await chepVaBao(v, $('#ghi-chu-xuat-loc'))
+}
+
+function veKiemDu(k, them = '') {
+  const ds = (arr, max = 40) => arr.length ? arr.slice(0, max).join(', ') + (arr.length > max ? ` … (+${arr.length - max})` : '') : ''
+  const dong = []
+  dong.push(k.ok
+    ? `<div class="manh">✔ Đủ hình cho cả ${k.soCanh} cảnh${k.coAudio ? ' và đủ giọng đọc' : ''} — đưa thư mục này vào CapCut Draft Studio được.</div>`
+    : `<div class="canh-bao-manh"><b>Chưa đủ để dựng.</b></div>`)
+  if (k.thieuHinh.length) dong.push(`<div class="canh-bao-manh">Thiếu hình ${k.thieuHinh.length} cảnh: ${ds(k.thieuHinh)}</div>`)
+  if (k.trungSo.length) dong.push(`<div class="canh-bao-manh">Một số có hai tệp trong cùng thư mục: ${ds(k.trungSo)}</div>`)
+  if (k.thua.length) dong.push(`<div class="canh-bao-manh">Số vượt tổng ${k.soCanh} cảnh (nhầm dự án?): ${ds(k.thua)}</div>`)
+  if (k.thieuAudio.length) dong.push(`<div class="canh-bao-manh">Thiếu giọng đọc: ${ds(k.thieuAudio)}</div>`)
+  if (!k.coAudio) dong.push('<div class="ghi-chu">Chưa có thư mục Audio/ — thêm giọng đọc đánh số (1.mp3, 2.mp3…) rồi kiểm lại.</div>')
+  if (k.haiHinh.length) dong.push(`<div class="ghi-chu">Có cả video lẫn ảnh (CapCut dùng video, ảnh làm dự phòng): ${ds(k.haiHinh)}</div>`)
+  $('#ket-qua-kiem-du').innerHTML = them + dong.join('')
+}
+
+$('#nut-gom-flow').onclick = async () => {
+  if (!keHoachFt) { await baoTin('Chưa có kế hoạch footage.'); return }
+  if (!canCoThuMuc()) return
+  const kq = await window.api.gomTepFlow(thuMucDung, keHoachFt)
+  if (kq.huy) return
+  if (!kq.ok) { await baoTin(kq.loi); return }
+  const them = `<div>Đã chép <b>${kq.soChep}</b> tệp Flow.` +
+    (kq.boQua.length ? ` Bỏ qua ${kq.boQua.length} tệp (không có số đầu tên / trùng cảnh footage).` : '') +
+    (kq.nhieuTep.length ? ` ${kq.nhieuTep.length} cảnh Flow có nhiều bản — lấy bản đầu (${kq.nhieuTep.slice(0, 5).map((n) => n.chon).join(', ')}…).` : '') +
+    (kq.thua.length ? ` <span class="canh-bao-manh">${kq.thua.length} tệp mang số lớn hơn tổng số cảnh, không chép.</span>` : '') + '</div>'
+  veKiemDu(kq.kiem, them)
+}
+
+$('#nut-kiem-du').onclick = async () => {
+  if (!canCoThuMuc()) return
+  const soCanh = keHoachFt ? keHoachFt.canh.length : canhHienTai.length
+  if (!soCanh) { await baoTin('Chưa biết tổng số cảnh — cắt cảnh hoặc mở thư mục có kế hoạch.'); return }
+  const kq = await window.api.kiemDuThuMuc(thuMucDung, soCanh)
+  if (!kq.ok) { await baoTin(kq.loi); return }
+  veKiemDu(kq.kiem)
+}
+
 // ---------------------------------------------------------------------------
 // Trình duyệt: nút mở nhanh
 // ---------------------------------------------------------------------------
@@ -2099,7 +2450,32 @@ window.smokeDuLieuMau = async function () {
   $('#tom-tat-radar').textContent = '5 video mẫu từ 9 nguồn · 2 ĐẨY MẠNH'
   $('#nhap-linh-vuc').value = 'bible stories, old testament'
   await datChon(dong.slice(0, 3), true, 'Ý tưởng')
-  return { soDong: dong.length, daChon: videoDaChon.length }
+
+  // Footage mẫu: đủ bốn trạng thái nhãn + ảnh đang dùng + bản khác.
+  const cauFt = [
+    'In 1963, thousands of people marched on Washington for civil rights, filling the streets for miles.',
+    '"Do not be afraid," she whispered, as the angel stepped out of the light.',
+    'Aerial footage of the Mississippi River shows how wide the great flood really was that spring.',
+    'The old city of Chicago burned for three days, and the smoke could be seen from the lake.',
+    'Moses lifted his staff and the sea parted before the frightened crowd.'
+  ]
+  const uvMau = (i, loai, nguon) => ({ id: `mau-${i}`, nguon, loai, tieuDe: 'mẫu ' + i, thumb: mau(i, mauNen[i % 5]), thoiLuong: loai === 'video' ? 14 + i : 0, rong: 1920, diem: 3 - i / 10, giayPhep: nguon === 'Wikimedia Commons' ? 'Public domain' : nguon + ' License' })
+  thuMucDung = '/may-kiem-thu/san-xuat'
+  keHoachFt = {
+    canh: cauFt.map((chu, i) => ({ so: i + 1, ten: String(i + 1).padStart(3, '0'), chu, soTu: 20, giayUoc: 9, loai: 'AI', canHoi: false, kieu: 'video', tuKhoaTim: '', lyDo: '', ungVien: [] }))
+  }
+  Object.assign(keHoachFt.canh[0], { loai: 'FOOTAGE', kieu: 'anh', tuKhoaTim: '1963 march on washington crowd', lyDo: 'sự kiện lịch sử có ảnh tư liệu',
+    chon: { ...uvMau(1, 'anh', 'Wikimedia Commons'), tep: 'Images/001.jpg', trang: 'https://commons.wikimedia.org/' }, ungVien: [uvMau(1, 'anh', 'Wikimedia Commons'), uvMau(2, 'anh', 'Library of Congress'), uvMau(3, 'anh', 'Pexels')] })
+  Object.assign(keHoachFt.canh[2], { loai: 'FOOTAGE', tuKhoaTim: 'mississippi river flood aerial',
+    chon: { ...uvMau(4, 'video', 'Pexels'), tep: 'Videos/003.mp4' }, ungVien: [uvMau(4, 'video', 'Pexels'), uvMau(5, 'video', 'Pixabay'), uvMau(6, 'video', 'Pexels'), uvMau(7, 'anh', 'Pixabay')] })
+  Object.assign(keHoachFt.canh[3], { loai: 'FOOTAGE', tuKhoaTim: 'great chicago fire 1871', khongThay: true })
+  Object.assign(keHoachFt.canh[1], { canHoi: false, lyDo: 'yếu tố AI: angel, whispered · có thoại' })
+  locFt = 'tat-ca'
+  $('#thu-muc-dung').innerHTML = `Thư mục dựng: <code>${thoat(thuMucDung)}</code> · kế hoạch mẫu (kiểm thử giao diện)`
+  $('#o-chuoi-so-flow').value = '2,4-5'
+  veKiemDu({ ok: false, soCanh: 5, thieuHinh: [4], trungSo: [], thua: [], thieuAudio: [], haiHinh: [], coAudio: false })
+  veFootage()
+  return { soDong: dong.length, daChon: videoDaChon.length, canhFootage: keHoachFt.canh.length }
 }
 
 // ---------------------------------------------------------------------------

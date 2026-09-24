@@ -66,12 +66,29 @@ contextBridge.exposeInMainWorld('api', {
 
   // Prompt ảnh
   catCanh: (chu, duAnMa, gopCanh) => goi('promptanh:cat-canh', { chu, duAnMa, gopCanh }),
-  promptMoTa: (canh, loThu, moiLo, kieu) => goi('promptanh:prompt-mo-ta', { canh, loThu, moiLo, kieu }),
+  promptMoTa: (canh, loThu, moiLo, kieu, boSo) => goi('promptanh:prompt-mo-ta', { canh, loThu, moiLo, kieu, boSo }),
   docMoTa: (chu) => goi('promptanh:doc-mo-ta', { chu }),
   taoPromptAnh: (canh, moTaTheoCanh, promptThang) =>
     goi('promptanh:tao', { canh, moTaTheoCanh, promptThang }),
-  xuatPromptAnh: (canh, cacPrompt, duAnMa) => goi('promptanh:xuat', { canh, cacPrompt, duAnMa }),
+  xuatPromptAnh: (canh, cacPrompt, duAnMa, keHoachFootage) => goi('promptanh:xuat', { canh, cacPrompt, duAnMa, keHoachFootage }),
   ghiKho: (loai, danhSach) => goi('kho:ghi', { loai, danhSach }),
+
+  // Footage thật (0.5.0)
+  nguonFootage: () => goi('footage:nguon'),
+  chonThuMucDung: (duAnMa, chonMoi) => goi('footage:thu-muc', { duAnMa, chonMoi }),
+  xuatCanhXlsx: (thuMuc, canh) => goi('footage:xuat-canh', { thuMuc, canh }),
+  lapKeHoachFootage: (canh, thuMuc) => goi('footage:lap-ke-hoach', { canh, thuMuc }),
+  kiemKhopKeHoach: (canh, keHoach) => goi('footage:kiem-khop', { canh, keHoach }),
+  luuKeHoachFootage: (thuMuc, keHoach) => goi('footage:luu', { thuMuc, keHoach }),
+  promptPhanLoai: (keHoach, loThu, moiLo) => goi('footage:prompt-phan-loai', { keHoach, loThu, moiLo }),
+  docPhanLoai: (chu, keHoach, thuMuc) => goi('footage:doc-phan-loai', { chu, keHoach, thuMuc }),
+  timTaiFootage: (thuMuc, keHoach, chiSo) => goi('footage:tim-tai', { thuMuc, keHoach, chiSo }),
+  dungFootage: () => goi('footage:dung'),
+  chonUngVien: (thuMuc, keHoach, so, id) => goi('footage:chon-ung-vien', { thuMuc, keHoach, so, id }),
+  doiLoaiCanh: (thuMuc, keHoach, so, loai, tuKhoaTim, kieu) => goi('footage:doi-loai', { thuMuc, keHoach, so, loai, tuKhoaTim, kieu }),
+  xuatExcelLoc: (thuMuc, keHoach) => goi('footage:xuat-loc', { thuMuc, keHoach }),
+  gomTepFlow: (thuMuc, keHoach) => goi('footage:gom-flow', { thuMuc, keHoach }),
+  kiemDuThuMuc: (thuMuc, soCanh) => goi('footage:kiem-du', { thuMuc, soCanh }),
 
   // Tài khoản + trình duyệt trong app
   themTaiKhoan: (ten) => goi('taikhoan:them', { ten }),

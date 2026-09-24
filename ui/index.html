@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: https://i.ytimg.com https://i1.ytimg.com https://i2.ytimg.com https://i3.ytimg.com https://i4.ytimg.com https://i9.ytimg.com https://yt3.ggpht.com">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: https://i.ytimg.com https://i1.ytimg.com https://i2.ytimg.com https://i3.ytimg.com https://i4.ytimg.com https://i9.ytimg.com https://yt3.ggpht.com https://images.pexels.com https://cdn.pixabay.com https://pixabay.com https://upload.wikimedia.org https://tile.loc.gov">
 <title>Tool Ý Tưởng</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -32,6 +32,7 @@
       <button class="muc" data-man="kich-ban"><span class="ico">✎</span> Kịch bản</button>
       <button class="muc" data-man="kiem-duyet"><span class="ico">⚑</span> Kiểm duyệt</button>
       <button class="muc" data-man="prompt-anh"><span class="ico">▣</span> Prompt ảnh</button>
+      <button class="muc" data-man="footage"><span class="ico">◧</span> Footage thật</button>
 
       <div class="nhom-menu">Hệ thống</div>
       <button class="muc" data-man="cai-dat"><span class="ico">⚙</span> Cài đặt</button>
@@ -561,6 +562,8 @@
           được qua template và chèn mô tả nhân vật — nhưng hỏng một dấu phẩy là vỡ cả lô.
           <b>Prompt thường</b> mỗi dòng một prompt, chịu được lời dẫn và cắt ngang, dùng nguyên văn.
           Dán kiểu nào tool cũng tự nhận ra.</p>
+        <label class="o-danh-dau" id="dong-bo-canh-footage"><input type="checkbox" id="o-bo-canh-footage" checked>
+          Bỏ cảnh đã có footage thật — chỉ xin Claude mô tả cảnh AI <span id="so-canh-footage-anh" class="ghi-chu"></span></label>
         <textarea id="o-mo-ta-tra-ve" rows="5" placeholder="Dán kết quả Claude trả về — JSON hay prompt thường đều được"></textarea>
         <div class="hang-nut">
           <button id="nut-doc-mo-ta" class="nut nut-xanh">Đọc JSON</button>
@@ -576,8 +579,134 @@
           <span id="ghi-chu-xuat" class="ghi-chu"></span>
         </div>
         <p class="ghi-chu"><b>Bất biến:</b> số thứ tự liên tục từ 1, không bỏ số. Flow Automation Studio tra
-          <code>prompts[index-1]</code> theo số thứ tự toàn cục — thiếu một số là lệch tên tệp cả mẻ, và nó sai im lặng.</p>
+          <code>prompts[index-1]</code> theo số thứ tự toàn cục — thiếu một số là lệch tên tệp cả mẻ, và nó sai im lặng.
+          Có dùng <b>Footage thật</b> thì <code>prompts.txt</code> vẫn đủ mọi dòng; tool ghi thêm
+          <code>chuoi-so-flow.txt</code> để Flow chỉ chạy cảnh AI.</p>
         <div class="cuon-bang"><table id="bang-canh"></table></div>
+      </div>
+    </section>
+
+    <!-- ---------- FOOTAGE THẬT ---------- -->
+    <section class="man" id="man-footage">
+      <h1>Footage thật — cảnh nào dùng ảnh/video có sẵn, cảnh nào để Flow làm</h1>
+
+      <div class="the the-sap-co">
+        <label class="nhan">Cách giữ đúng thứ tự khi xen footage với ảnh Flow</label>
+        <p class="ghi-chu"><b>Số cảnh là "số căn cước"</b>: đánh một lần lúc cắt cảnh, <b>không bao giờ đánh lại</b>.
+          Footage cảnh 4 tên <code>Videos/004.mp4</code>, ảnh Flow cảnh 5 tên <code>Images/005.png</code>, giọng đọc cảnh 5 là
+          <code>Audio/5.mp3</code> — CapCut Draft Studio ghép theo số nên hai loại xen kẽ vẫn đúng chỗ. Excel đã lọc
+          <b>giữ số gốc</b> (1, 2, 5, 6…), chỗ hở là đúng. Flow nhận <code>prompts.txt</code> đủ dòng + chuỗi số
+          <code>1-3,5-11</code> ở ô <i>"Dùng danh sách số tuỳ chọn"</i> nên cũng đặt tên theo số gốc.</p>
+      </div>
+
+      <div class="the the-du-an">
+        <label class="nhan">Dự án</label>
+        <select class="chon-du-an o-dai"></select>
+        <div class="ghi-chu thong-tin-du-an"></div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Thư mục dựng của video này</label>
+        <p class="ghi-chu">Mọi tệp của video nằm chung một chỗ — đây cũng là thư mục <b>INPUT</b> của CapCut Draft Studio
+          (thêm <code>Audio/</code> giọng đọc vào đây). Có dự án thì mặc định là <code>&lt;dự án&gt;/san-xuat</code>.</p>
+        <div class="hang-nut">
+          <button id="nut-chon-thu-muc-dung" class="nut nut-chinh">Dùng thư mục của dự án</button>
+          <button id="nut-chon-thu-muc-khac" class="nut nut-phu">Chọn thư mục khác…</button>
+          <button id="nut-mo-thu-muc-dung" class="nut nut-phu">Mở thư mục</button>
+        </div>
+        <div id="thu-muc-dung" class="hop-uoc">Chưa chọn thư mục dựng.</div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Bước 1 — Cắt cảnh và xuất Excel 2 cột (STT · Cảnh)</label>
+        <p class="ghi-chu">Dùng chung bộ cảnh với màn <b>Prompt ảnh</b> (kịch bản lấy từ ô của màn đó hoặc từ dự án).
+          <code>canh.xlsx</code> đủ mọi cảnh — dùng để đọc giọng cho tất cả, kể cả cảnh footage, và không bị sửa ở các bước sau.</p>
+        <div class="hang-nut">
+          <button id="nut-cat-canh-ft" class="nut nut-chinh">Cắt cảnh từ kịch bản</button>
+          <button id="nut-xuat-canh-xlsx" class="nut nut-xanh">Xuất canh.xlsx</button>
+          <span id="ghi-chu-buoc1-ft" class="ghi-chu"></span>
+        </div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Bước 2 — Phân loại: FOOTAGE hay AI</label>
+        <p class="ghi-chu"><b>Lọc sơ</b> (tự động, miễn phí) gạt thẳng cảnh chắc chắn là AI: thoại, cảm xúc, nhân vật Kinh Thánh,
+          phép lạ. Cảnh còn lại gửi <b>Claude</b> theo lô để xác nhận và viết từ khóa tìm kiếm tiếng Anh. Phân vân thì chọn AI —
+          một clip lạc đề giữa video tệ hơn thêm một cảnh Flow.</p>
+        <div class="hang-nut">
+          <button id="nut-loc-so" class="nut nut-chinh">Lọc sơ (tự động)</button>
+          <label class="o-inline">Lô số <input type="number" id="o-lo-phan-loai" min="1" value="1"></label>
+          <button id="nut-prompt-phan-loai" class="nut nut-chinh">Chép prompt lô này</button>
+          <button class="nut nut-phu nut-mo-nhanh" data-url="https://claude.ai/new">Mở claude.ai trong tool</button>
+          <span id="ghi-chu-phan-loai" class="ghi-chu"></span>
+        </div>
+        <textarea id="o-tra-loi-phan-loai" rows="4" placeholder="Dán câu trả lời của Claude — mỗi dòng: 12 | FOOTAGE | video | aerial city skyline | lý do  hoặc  13 | AI | lý do"></textarea>
+        <div class="hang-nut">
+          <button id="nut-doc-phan-loai" class="nut nut-xanh">Đọc kết quả</button>
+          <span id="ket-qua-phan-loai" class="ghi-chu"></span>
+        </div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Bước 3 — Tìm và tự tải footage</label>
+        <div id="trang-thai-nguon" class="hop-uoc"></div>
+        <div class="hang-nut">
+          <button id="nut-tim-tai-ft" class="nut nut-chinh nut-to">Tìm &amp; tải mọi cảnh FOOTAGE</button>
+          <button id="nut-dung-ft" class="nut nut-do">Dừng</button>
+          <span id="ghi-chu-tim-tai" class="ghi-chu"></span>
+        </div>
+        <p class="ghi-chu">Mỗi cảnh tải bản điểm cao nhất (khớp từ khóa, khung ngang, video dài hơn cảnh, ≥1280 px),
+          không lặp lại footage đã dùng ở cảnh khác. Tải hỏng thì tự thử bản kế. Kết quả tìm được nhớ 24 giờ —
+          bấm lại không tốn thêm lượt (Pexels chỉ cho 200 lượt/giờ).</p>
+      </div>
+
+      <div class="the">
+        <div class="hang-dau-bang">
+          <label class="nhan">Bước 4 — Duyệt nhanh</label>
+          <div class="loc-nhanh" id="loc-footage">
+            <button class="chip chip-chon" data-loc="footage">Footage</button>
+            <button class="chip" data-loc="can-hoi">Chờ Claude</button>
+            <button class="chip" data-loc="khong-thay">Không tìm ra</button>
+            <button class="chip" data-loc="ai">AI</button>
+            <button class="chip" data-loc="tat-ca">Tất cả</button>
+          </div>
+        </div>
+        <p class="ghi-chu">Bấm một ảnh nhỏ để đổi sang bản đó. Sửa từ khóa rồi bấm <b>Tìm lại</b>. Không ưng thì <b>Trả về AI</b>
+          (tệp chuyển vào <code>_footage-da-bo/</code>, không xoá hẳn).</p>
+        <div id="tom-tat-footage" class="luoi-so"></div>
+        <div class="cuon-bang"><table id="bang-footage"></table></div>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Bước 5 — Xuất Excel đã lọc cho Flow</label>
+        <p class="ghi-chu">Bỏ dòng của cảnh <b>đã có tệp footage</b>, giữ nguyên số gốc các cảnh còn lại. Cảnh gắn FOOTAGE mà
+          không tìm ra vẫn nằm trong danh sách Flow — không để lỗ hổng hình.</p>
+        <div class="hang-nut">
+          <button id="nut-xuat-loc" class="nut nut-xanh nut-to">Xuất canh-cho-flow.xlsx + chuỗi số</button>
+          <span id="ghi-chu-xuat-loc" class="ghi-chu"></span>
+        </div>
+        <label class="nhan-nho">Chuỗi số dán vào ô "Dùng danh sách số tuỳ chọn" của Flow</label>
+        <div class="hang-nut" style="margin-top:6px">
+          <input id="o-chuoi-so-flow" class="o-dai" readonly placeholder="Xuất ở trên để có chuỗi số">
+          <button id="nut-chep-chuoi-so" class="nut nut-phu">Chép</button>
+        </div>
+        <ol class="danh-sach-buoc">
+          <li>Màn <b>Prompt ảnh</b> → sinh prompt → <b>Xuất cho Flow + CapCut</b> (prompts.txt đủ dòng + chuoi-so-flow.txt).</li>
+          <li>Trong Flow: nạp <b>toàn bộ</b> prompts.txt, bật <i>"Dùng danh sách số tuỳ chọn"</i>, dán chuỗi số.</li>
+          <li>Flow: <b>không</b> đặt tiền tố tên tệp (Rename prefix) — số cảnh phải đứng đầu tên tệp.</li>
+        </ol>
+      </div>
+
+      <div class="the">
+        <label class="nhan">Bước 6 — Sau khi Flow chạy xong: gom tệp và kiểm đủ trước khi dựng</label>
+        <p class="ghi-chu">Gom: chép ảnh/video Flow (tên kiểu <code>05.png</code>, <code>05_1.mp4</code>) vào <code>Images/005.png</code>,
+          <code>Videos/005.mp4</code> — đúng kiểu tên CapCut Draft Studio đọc được. Không bao giờ đè cảnh footage.
+          Kiểm đủ: cảnh nào thiếu hình, số nào có hai tệp, số nào vượt tổng số cảnh, thiếu giọng đọc.</p>
+        <div class="hang-nut">
+          <button id="nut-gom-flow" class="nut nut-chinh">Gom tệp Flow vào thư mục dựng…</button>
+          <button id="nut-kiem-du" class="nut nut-xanh">Kiểm đủ</button>
+        </div>
+        <div id="ket-qua-kiem-du" class="hop-uoc"></div>
       </div>
     </section>
 
@@ -690,6 +819,28 @@
       </div>
 
       <div class="the">
+        <label class="nhan">Footage thật — nguồn ảnh/video dùng thương mại được</label>
+        <p class="ghi-chu"><b>Pexels</b> và <b>Pixabay</b>: đăng ký miễn phí, lấy khoá ở
+          <a href="#" data-ngoai="https://www.pexels.com/api/">pexels.com/api</a> và
+          <a href="#" data-ngoai="https://pixabay.com/api/docs/">pixabay.com/api/docs</a>.
+          <b>Wikimedia Commons</b> và <b>Library of Congress</b> không cần khoá. Tool <b>không</b> tải video YouTube hay clip tin tức —
+          kênh kiếm tiền dính Content ID / "nội dung dùng lại" là mất cả kênh.</p>
+        <div class="luoi-cai-dat">
+          <label>Khoá Pexels
+            <input data-khoa="khoaPexels" spellcheck="false" placeholder="dán khoá Pexels"></label>
+          <label>Khoá Pixabay
+            <input data-khoa="khoaPixabay" spellcheck="false" placeholder="dán khoá Pixabay"></label>
+          <label>Số bản giữ lại mỗi cảnh để đổi
+            <input type="number" data-khoa="footageSoUngVien" min="3" max="12"></label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="footageDungPexels"> Dùng Pexels (video + ảnh stock, 200 lượt/giờ)</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="footageDungPixabay"> Dùng Pixabay (video + ảnh stock)</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="footageDungWikimedia"> Dùng Wikimedia Commons (ảnh lịch sử, người thật — chỉ lấy Public domain / CC0 / CC BY)</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="footageDungLoc"> Dùng Library of Congress (ảnh tư liệu Mỹ — tự xem mục "Rights" trên trang gốc)</label>
+          <label class="o-danh-dau"><input type="checkbox" data-khoa="footageChoCcBySa"> Nhận cả ảnh CC BY-SA (điều khoản "chia sẻ tương tự" với video YouTube là vùng xám — mặc định tắt)</label>
+        </div>
+      </div>
+
+      <div class="the">
         <label class="nhan">Cập nhật</label>
         <div class="luoi-cai-dat">
           <label class="o-danh-dau"><input type="checkbox" data-khoa="tuDongKiemCapNhat"> Tự kiểm tra bản mới khi mở app</label>
@@ -718,6 +869,20 @@
     <!-- ---------- HƯỚNG DẪN ---------- -->
     <section class="man" id="man-huong-dan">
       <h1>Hướng dẫn sử dụng</h1>
+
+      <div class="the">
+        <label class="nhan">Footage thật xen với ảnh Flow — quy trình một video</label>
+        <ol class="danh-sach-buoc">
+          <li><b>Footage thật</b> → chọn thư mục dựng → <b>Cắt cảnh</b> → <b>Xuất canh.xlsx</b> (đủ mọi cảnh, dùng để đọc giọng).</li>
+          <li><b>Lọc sơ</b> → chép prompt từng lô sang Claude → dán câu trả lời → <b>Đọc kết quả</b>.</li>
+          <li><b>Tìm &amp; tải</b> → duyệt nhanh, đổi bản khác hoặc trả cảnh về AI.</li>
+          <li><b>Xuất canh-cho-flow.xlsx + chuỗi số</b>. Sang <b>Prompt ảnh</b> sinh prompt (tick "Bỏ cảnh đã có footage") → Xuất.</li>
+          <li>Flow: nạp <b>đủ</b> prompts.txt + dán chuỗi số vào "Dùng danh sách số tuỳ chọn". Không đặt tiền tố tên tệp.</li>
+          <li>Flow xong → <b>Gom tệp Flow</b> → <b>Kiểm đủ</b> → đưa thư mục dựng (thêm <code>Audio/</code>) vào CapCut Draft Studio.</li>
+        </ol>
+        <p class="ghi-chu">Lấy khoá Pexels/Pixabay miễn phí trong <b>Cài đặt → Footage thật</b>. Ghi công nguồn nằm ở
+          <code>ghi-cong-footage.txt</code> — dán vào mô tả video (ảnh CC BY <b>bắt buộc</b> ghi tác giả).</p>
+      </div>
 
       <div class="the">
         <label class="nhan">Lấy khoá API YouTube — miễn phí, không cần thẻ</label>

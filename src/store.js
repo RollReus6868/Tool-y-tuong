@@ -67,7 +67,17 @@ const CAI_DAT_MAC_DINH = {
   // Prompt ảnh
   gopCanh: 1,               // 2 = gộp 2 cảnh một ảnh, còn nửa số ảnh phải render
   templatePrompt: '',       // rỗng = dùng template mặc định trong prompt-anh.js
-  soCanhMoiLo: 50           // số cảnh mỗi lô khi xin Claude mô tả
+  soCanhMoiLo: 50,          // số cảnh mỗi lô khi xin Claude mô tả
+
+  // 0.5.0 — Footage thật (stock + lưu trữ công). Khoá Pexels/Pixabay miễn phí.
+  khoaPexels: '',
+  khoaPixabay: '',
+  footageDungPexels: true,
+  footageDungPixabay: true,
+  footageDungWikimedia: true,
+  footageDungLoc: true,
+  footageChoCcBySa: false,  // CC BY-SA: điều khoản "chia sẻ tương tự" với video YouTube là vùng xám
+  footageSoUngVien: 6
 }
 
 function docJSON(duongDan, macDinh) {
