@@ -187,6 +187,79 @@ function dichLoiYtDlp(chu) {
   return dong.length ? dong[dong.length - 1] : ''
 }
 
+// ---------------------------------------------------------------------------
+// Tham số gọi yt-dlp lấy phụ đề — hàm THUẦN, kiểm thử tầng 1 soi nguyên văn.
+//
+// BẪY ĐÃ TRẢ GIÁ (0.1.0 → 0.5.0, năm bản liền không lấy được phụ đề nào):
+// `--print` NGẦM BẬT `--simulate` — "không tải và KHÔNG GHI GÌ XUỐNG ĐĨA".
+// Tức là yt-dlp đọc được danh sách phụ đề, in tiêu đề ra, thoát mã 0… nhưng
+// không ghi tệp phụ đề nào. Tool quét thư mục thấy trống rồi báo "video không
+// có phụ đề" cho MỌI video. `--no-simulate` + `--skip-download` = ghi phụ đề,
+// không tải video.
+//
+// Và KHÔNG dùng `--no-warnings`: lý do thật khi thiếu phụ đề (YouTube đòi PO
+// token, thiếu ngôn ngữ, thiếu JavaScript runtime) chỉ nằm trong dòng WARNING.
+// Tắt đi là tool chỉ còn đoán — và đoán sai.
+// ---------------------------------------------------------------------------
+
+// Lượt thử lại khi lượt đầu không ra tệp: đổi sang các client của YouTube mà
+// phụ đề không đòi PO token (theo PO Token Guide của yt-dlp, chỉ client `web`
+// đòi PO token cho phụ đề).
+const CLIENT_DU_PHONG = 'youtube:player_client=tv,web_safari,mweb,android_vr'
+
+function thamSoPhuDe({ videoId, ngonNgu = 'en', thuMucTam, duongDanCookie = null, clientDuPhong = false }) {
+  const thamSo = [
+    '--skip-download',
+    '--no-simulate',
+    '--write-subs',
+    '--write-auto-subs',
+    '--sub-langs', `${ngonNgu}.*,${ngonNgu}`,
+    '--sub-format', 'json3/vtt/best',
+    '--no-playlist',
+    '--print', '%(id)s\t%(title)s\t%(duration)s\t%(channel)s',
+    '-o', path.join(thuMucTam, '%(id)s')
+  ]
+  if (clientDuPhong) thamSo.push('--extractor-args', CLIENT_DU_PHONG)
+  if (duongDanCookie) thamSo.push('--cookies', duongDanCookie)
+  thamSo.push(`https://www.youtube.com/watch?v=${videoId}`)
+  return thamSo
+}
+
+// Đọc các dòng WARNING của yt-dlp để nói ĐÚNG lý do không có tệp phụ đề.
+// Hàm thuần.
+function chanDoanThieuPhuDe(loiChu, { ngonNgu = 'en' } = {}) {
+  const s = String(loiChu || '')
+  const canhBao = s.split('\n').map((d) => d.trim()).filter((d) => /^(WARNING|ERROR)/i.test(d))
+  const coPoToken = /PO Token/i.test(s)
+  const thieuJs = /JavaScript runtime|js-runtimes|\bdeno\b/i.test(s)
+  const khongCoNgonNgu = /There are no subtitles for the requested languages|no subtitles for the requested/i.test(s)
+  const khongCoGi = /(has no subtitles|There are no subtitles)(?! for the requested)/i.test(s)
+
+  let lyDo
+  if (coPoToken) {
+    lyDo = 'YouTube đòi "PO token" mới cho tải phụ đề (thay đổi phía YouTube, không phải video thiếu phụ đề). ' +
+      'Tool đã thử các client khác mà vẫn không được. Thử: Cài đặt → "Cập nhật yt-dlp"; hoặc đăng nhập một tài khoản ở màn Trình duyệt rồi bật "Dùng cookie của tài khoản".'
+  } else if (khongCoNgonNgu) {
+    lyDo = `Video có phụ đề nhưng KHÔNG có bản tiếng "${ngonNgu}" (kể cả tự động). Kiểm tra ngôn ngữ ở Cài đặt (relevanceLanguage).`
+  } else if (khongCoGi) {
+    lyDo = 'Video này không có phụ đề nào (kể cả phụ đề tự động).'
+  } else {
+    lyDo = 'yt-dlp chạy xong nhưng không ghi ra tệp phụ đề nào. Thử Cài đặt → "Cập nhật yt-dlp". Chi tiết ở Nhật ký.'
+  }
+  if (thieuJs) lyDo += ' (yt-dlp còn báo thiếu JavaScript runtime — ảnh hưởng tải video, thường không ảnh hưởng phụ đề.)'
+  return { lyDo, coPoToken, thieuJs, khongCoNgonNgu, khongCoGi, canhBao: canhBao.slice(-6) }
+}
+
+function timTepPhuDe(thuMucTam, videoId) {
+  // yt-dlp đặt tên tệp là <id>.<ngôn ngữ>.<định dạng>, mà phần ngôn ngữ có thể
+  // là "en", "en-US", "en-orig"... nên quét thư mục chứ đừng đoán tên.
+  const tep = fs.readdirSync(thuMucTam).filter((t) => t.startsWith(videoId + '.') &&
+    /\.(json3|vtt)$/i.test(t) && fs.statSync(path.join(thuMucTam, t)).size > 0)
+  // "en-orig" là phụ đề tự động của bản gốc; bản tay ("en", "en-US") đứng trước.
+  const diem = (t) => (t.endsWith('.json3') ? 0 : 1) + (/-orig\./.test(t) ? 0.5 : 0)
+  return tep.sort((a, b) => diem(a) - diem(b))[0] || null
+}
+
 // Lấy phụ đề của một video. Trả về { videoId, tieuDe, dinhDang, tho, duongDan }.
 async function layPhuDe({
   thuMucDuLieu,
@@ -194,42 +267,40 @@ async function layPhuDe({
   videoId,
   ngonNgu = 'en',
   duongDanCookie = null,
-  baoTienDo = () => {}
+  baoTienDo = () => {},
+  chayHam = chay
 }) {
   fs.mkdirSync(thuMucTam, { recursive: true })
-  const mau = path.join(thuMucTam, '%(id)s')
 
-  const thamSo = [
-    '--skip-download',
-    '--write-subs',
-    '--write-auto-subs',
-    '--sub-langs', `${ngonNgu}.*,${ngonNgu}`,
-    '--sub-format', 'json3/vtt/best',
-    '--no-playlist',
-    '--no-warnings',
-    '--print', '%(id)s\t%(title)s\t%(duration)s\t%(channel)s',
-    '-o', mau,
-    `https://www.youtube.com/watch?v=${videoId}`
-  ]
-  if (duongDanCookie) thamSo.push('--cookies', duongDanCookie)
+  let tieuDe = ''
+  let thoiLuong = ''
+  let tenKenh = ''
+  let uuTien = null
+  let loiGop = ''
 
-  baoTienDo({ phanTram: 20, viec: 'Lấy phụ đề', chiTiet: videoId })
-  const { raChu } = await chay(thuMucDuLieu, thamSo, {
-    baoDong: (d) => baoTienDo({ phanTram: 45, viec: 'Lấy phụ đề', chiTiet: d.trim().slice(0, 110) })
-  })
-
-  const [, tieuDe = '', thoiLuong = '', tenKenh = ''] =
-    (raChu.split('\n').find((d) => d.includes('\t')) || '').split('\t')
-
-  // yt-dlp đặt tên tệp là <id>.<ngôn ngữ>.<định dạng>, mà phần ngôn ngữ có thể
-  // là "en", "en-US", "en-orig"... nên quét thư mục chứ đừng đoán tên.
-  const tep = fs.readdirSync(thuMucTam).filter((t) => t.startsWith(videoId + '.'))
-  const uuTien = tep.find((t) => t.endsWith('.json3')) || tep.find((t) => t.endsWith('.vtt')) || tep[0]
+  // Lượt 1: client mặc định. Lượt 2 (chỉ khi lượt 1 không ra tệp): client dự phòng.
+  for (const clientDuPhong of [false, true]) {
+    baoTienDo({ phanTram: clientDuPhong ? 60 : 20, viec: 'Lấy phụ đề', chiTiet: videoId + (clientDuPhong ? ' · thử client dự phòng' : '') })
+    const { raChu, loiChu } = await chayHam(thuMucDuLieu,
+      thamSoPhuDe({ videoId, ngonNgu, thuMucTam, duongDanCookie, clientDuPhong }), {
+        baoDong: (d) => baoTienDo({ phanTram: clientDuPhong ? 75 : 45, viec: 'Lấy phụ đề', chiTiet: d.trim().slice(0, 110) })
+      })
+    loiGop += (loiChu || '') + '\n'
+    const dong = (raChu.split('\n').find((d) => d.includes('\t')) || '').split('\t')
+    if (dong.length >= 2) [, tieuDe = '', thoiLuong = '', tenKenh = ''] = dong
+    uuTien = timTepPhuDe(thuMucTam, videoId)
+    if (uuTien) break
+    // Video thật sự không có phụ đề thì đổi client cũng vô ích — khỏi chờ thêm.
+    const cd = chanDoanThieuPhuDe(loiChu, { ngonNgu })
+    if (cd.khongCoGi || cd.khongCoNgonNgu) break
+  }
 
   if (!uuTien) {
-    const loi = new Error('Video này không có phụ đề (kể cả phụ đề tự động).')
+    const cd = chanDoanThieuPhuDe(loiGop, { ngonNgu })
+    const loi = new Error(cd.lyDo)
     loi.khongCoPhuDe = true
     loi.tieuDe = tieuDe
+    loi.canhBaoYtDlp = cd.canhBao
     throw loi
   }
 
@@ -260,6 +331,10 @@ module.exports = {
   tachNhieuVideoId,
   dinhDangCookieNetscape,
   dichLoiYtDlp,
+  thamSoPhuDe,
+  chanDoanThieuPhuDe,
+  timTepPhuDe,
+  CLIENT_DU_PHONG,
   taiBinary,
   capNhatBinary,
   chay,

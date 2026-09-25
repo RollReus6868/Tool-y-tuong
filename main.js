@@ -639,6 +639,7 @@ function dangKyIPC() {
         } catch (e) {
           loiVideo.push({ videoId: id, loi: e.message })
           nhatKy.loi(`Lời thoại ${id} lỗi: ${e.message}`)
+          for (const d of e.canhBaoYtDlp || []) nhatKy.canhBao(`yt-dlp ${id}: ${d}`)
         }
       }
     } finally {
@@ -731,6 +732,8 @@ function dangKyIPC() {
         ...sach
       }
     } catch (e) {
+      nhatKy.loi(`Lời thoại nhanh ${id} lỗi: ${e.message}`)
+      for (const d of e.canhBaoYtDlp || []) nhatKy.canhBao(`yt-dlp ${id}: ${d}`)
       baoTienDo({ phanTram: 100, viec: 'Lấy lời thoại lỗi', chiTiet: e.message, soLoi: 1, trangThai: 'loi', khu: 'loithoai' })
       return { ok: false, loi: e.message }
     } finally {

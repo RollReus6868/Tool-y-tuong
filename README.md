@@ -11,6 +11,28 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.5.1 — sửa lỗi lấy phụ đề: báo "không có phụ đề" với MỌI video
+
+**Nguyên nhân thật.** Lệnh gọi yt-dlp có `--print` (để lấy tiêu đề, tên kênh), mà
+`--print` **ngầm bật `--simulate`** — chế độ "không tải và *không ghi gì xuống
+đĩa*". yt-dlp đọc được danh sách phụ đề, in tiêu đề, thoát mã 0, nhưng không ghi
+tệp phụ đề nào. Tool quét thư mục thấy trống rồi kết luận "video không có phụ đề".
+Lỗi có từ bản 0.1.0 — màn Lời thoại chưa lấy được phụ đề thật lần nào. Đã chạy
+thử bằng yt-dlp 2026.08.19 thật: không có `--no-simulate` thì 0 tệp, có thì ghi tệp.
+
+**Sửa:**
+- Thêm `--no-simulate` (đi cùng `--skip-download`: ghi phụ đề, không tải video).
+- Bỏ `--no-warnings`. Lý do thật khi thiếu phụ đề chỉ nằm trong dòng WARNING của
+  yt-dlp; tắt đi là tool chỉ còn đoán — và đã đoán sai. Nay tool đọc cảnh báo để
+  nói đúng: YouTube đòi PO token / video không có bản tiếng Anh / video thật sự
+  không có phụ đề / không rõ (kèm lời khuyên cập nhật yt-dlp). Các dòng cảnh báo
+  được ghi vào Nhật ký.
+- Không ra tệp ở lượt đầu thì tự thử lại một lần với các client YouTube mà phụ đề
+  không đòi PO token (`tv, web_safari, mweb, android_vr`). Video thật sự không có
+  phụ đề thì không thử lại vô ích.
+- Kiểm thử tầng 1 soi nguyên văn tham số, và có bài kiểm tĩnh: chỗ nào gọi
+  `--print` thì bắt buộc có `--no-simulate`.
+
 ### 0.5.0 — màn Footage thật: xen ảnh/video có sẵn với ảnh Flow mà vẫn đúng thứ tự
 
 Kịch bản kể chuyện có những cảnh **tìm được hình thật** (thành phố, sông, sự kiện
@@ -424,7 +446,7 @@ mới** trong app tự thấy bản mới.
 
 | Tầng | Lệnh | Bắt được gì |
 |---|---|---|
-| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ** (191 ca) |
+| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ**, **tham số yt-dlp lấy phụ đề** (197 ca) |
 | 2. Giao diện | `YT_SMOKE=1 npx electron --no-sandbox .` | thiếu màn, thiếu phần tử, **thiếu khoá cài đặt**, lớp phủ che giao diện, **thumbnail và ảnh xem trước footage có vẽ ra không**; nạp dữ liệu mẫu rồi chụp ảnh từng màn vào `shots/` |
 
 Tầng 2 chụp ảnh xong **phải mở ảnh ra xem bằng mắt**. Nút bị cắt, chữ vỡ dấu,

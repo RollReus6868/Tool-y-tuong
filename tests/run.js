@@ -2187,6 +2187,81 @@ async function chay() {
   })
 
   // =========================================================================
+  nhom('38. yt-dlp lấy phụ đề — lỗi "--print ngầm bật --simulate"')
+
+  await kiem('tham số NGUYÊN VĂN: có --no-simulate (không thì --print chặn ghi tệp), không có --no-warnings', () => {
+    const ts = ytDlp.thamSoPhuDe({ videoId: '0NY2gAftzJE', ngonNgu: 'en', thuMucTam: '/tam' })
+    assert.deepStrictEqual(ts, [
+      '--skip-download', '--no-simulate', '--write-subs', '--write-auto-subs',
+      '--sub-langs', 'en.*,en', '--sub-format', 'json3/vtt/best', '--no-playlist',
+      '--print', '%(id)s\t%(title)s\t%(duration)s\t%(channel)s',
+      '-o', path.join('/tam', '%(id)s'),
+      'https://www.youtube.com/watch?v=0NY2gAftzJE'
+    ])
+    // Luật chung: có --print thì BẮT BUỘC có --no-simulate.
+    assert.ok(!ts.includes('--no-warnings'))
+    const ts2 = ytDlp.thamSoPhuDe({ videoId: 'aaaaaaaaaaa', thuMucTam: '/t', duongDanCookie: '/t/c.txt', clientDuPhong: true })
+    assert.deepStrictEqual(ts2.slice(-5), ['--extractor-args', 'youtube:player_client=tv,web_safari,mweb,android_vr', '--cookies', '/t/c.txt', 'https://www.youtube.com/watch?v=aaaaaaaaaaa'])
+  })
+
+  await kiem('mã nguồn: mọi chỗ gọi --print đều kèm --no-simulate', () => {
+    for (const f of ['src/yt-dlp.js', 'main.js']) {
+      const src = fs.readFileSync(path.join(__dirname, '..', f), 'utf8').split('\n').filter((d) => !/^\s*\/\//.test(d)).join('\n')
+      if (src.includes("'--print'")) assert.ok(src.includes("'--no-simulate'"), f)
+    }
+  })
+
+  await kiem('chẩn đoán đúng lý do: PO token / thiếu ngôn ngữ / không có gì / không rõ', () => {
+    const po = ytDlp.chanDoanThieuPhuDe('WARNING: [youtube] 0NY2gAftzJE: There are missing subtitles languages because a PO token was not provided.')
+    assert.ok(po.coPoToken && /PO token/.test(po.lyDo))
+    const nn = ytDlp.chanDoanThieuPhuDe('WARNING: There are no subtitles for the requested languages', { ngonNgu: 'en' })
+    assert.ok(nn.khongCoNgonNgu && !nn.khongCoGi)
+    const khong = ytDlp.chanDoanThieuPhuDe('[info] abc has no subtitles')
+    assert.ok(khong.khongCoGi)
+    const mo = ytDlp.chanDoanThieuPhuDe('')
+    assert.ok(/không ghi ra tệp phụ đề/.test(mo.lyDo), 'không rõ lý do thì KHÔNG được khẳng định "video không có phụ đề"')
+    const js = ytDlp.chanDoanThieuPhuDe('WARNING: [youtube] No supported JavaScript runtime could be found.')
+    assert.ok(js.thieuJs)
+  })
+
+  await kiem('chọn tệp: json3 trước vtt, bản tay trước "-orig", bỏ tệp rỗng', () => {
+    const d = thuMucTam('phu-de-chon')
+    fs.writeFileSync(path.join(d, 'abcdefghijk.en-orig.json3'), '{}')
+    fs.writeFileSync(path.join(d, 'abcdefghijk.en.vtt'), 'WEBVTT')
+    fs.writeFileSync(path.join(d, 'abcdefghijk.en.json3'), '{}')
+    fs.writeFileSync(path.join(d, 'abcdefghijk.en-US.json3'), '')
+    assert.strictEqual(ytDlp.timTepPhuDe(d, 'abcdefghijk'), 'abcdefghijk.en.json3')
+    assert.strictEqual(ytDlp.timTepPhuDe(thuMucTam('rong'), 'abcdefghijk'), null)
+  })
+
+  await kiem('lượt 1 không ra tệp vì PO token → tự thử client dự phòng và lấy được', async () => {
+    const d = thuMucTam('phu-de-thu-lai')
+    const goi = []
+    const chayGia = async (_tm, thamSo) => {
+      goi.push(thamSo)
+      if (thamSo.includes('--extractor-args')) {
+        fs.writeFileSync(path.join(d, '0NY2gAftzJE.en.json3'), '{"events":[]}')
+        return { raChu: '0NY2gAftzJE\tWhat If\t600\tKurzgesagt\n', loiChu: '' }
+      }
+      return { raChu: '0NY2gAftzJE\tWhat If\t600\tKurzgesagt\n', loiChu: 'WARNING: There are missing subtitles languages because a PO token was not provided.' }
+    }
+    const kq = await ytDlp.layPhuDe({ thuMucDuLieu: '/x', thuMucTam: d, videoId: '0NY2gAftzJE', chayHam: chayGia })
+    assert.strictEqual(goi.length, 2)
+    assert.strictEqual(kq.tieuDe, 'What If')
+    assert.strictEqual(kq.dinhDang, 'json3')
+  })
+
+  await kiem('video thật sự không có phụ đề → không thử lại vô ích, báo đúng lý do kèm cảnh báo cho Nhật ký', async () => {
+    const d = thuMucTam('phu-de-khong')
+    let soLan = 0
+    const chayGia = async () => { soLan++; return { raChu: 'x\tT\t1\tK\n', loiChu: '[info] bbbbbbbbbbb has no subtitles' } }
+    await assert.rejects(
+      ytDlp.layPhuDe({ thuMucDuLieu: '/x', thuMucTam: d, videoId: 'bbbbbbbbbbb', chayHam: chayGia }),
+      (e) => e.khongCoPhuDe && /không có phụ đề nào/.test(e.message) && Array.isArray(e.canhBaoYtDlp))
+    assert.strictEqual(soLan, 1)
+  })
+
+  // =========================================================================
   console.log('\n' + '─'.repeat(58))
   console.log(`TẦNG 1: ${soQua} qua, ${soTruot.length} truột`)
   if (soTruot.length) {
