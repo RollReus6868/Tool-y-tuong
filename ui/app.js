@@ -122,6 +122,7 @@ function moMan(ten) {
 
   if (ten === 'nhat-ky') taiNhatKy()
   if (ten === 'footage') { veNguonFootage(); veFootage() }
+  if (ten === 'kich-ban') capNhatUocApi()
 
   // Trình duyệt là một lớp phủ THẬT nằm đè lên cửa sổ, không phải phần tử HTML.
   // Rời màn là phải ẩn đi, nếu không nó che mất màn khác và người dùng tưởng
@@ -594,6 +595,8 @@ async function chonDuAn() {
     danYHienTai = []
     cacPhanHienTai = []
     veDanhSachPhan()
+    hienKichBanHienTai()
+    capNhatUocApi()
     return
   }
 
@@ -609,6 +612,8 @@ async function chonDuAn() {
 
   if (d.danY && d.danY.chuTho && !$('#o-dan-y').value) $('#o-dan-y').value = d.danY.chuTho
   veDanhSachPhan()
+  hienKichBanHienTai()
+  capNhatUocApi()
 }
 
 $('#nut-tao-du-an').onclick = async () => {
@@ -660,19 +665,40 @@ $('#nut-lay-loi-thoai').onclick = async () => {
     if (!kq.ok && kq.loi) { await baoTin(kq.loi); return }
     veLoiThoai(kq)
     $('#the-ket-qua-loi-thoai').hidden = false
+    // Kết quả nằm dưới cùng màn — cuộn tới, không thì bấm xong tưởng không có gì.
+    $('#the-ket-qua-loi-thoai').scrollIntoView({ behavior: 'smooth', block: 'start' })
     await taiDuAn()
   } finally {
     $('#nut-lay-loi-thoai').disabled = false
   }
 }
 
+// Kết quả lấy lời thoại theo dự án. Trước 0.6.0 chỗ này chỉ hiện 400 ký tự
+// xem trước rồi "…" — người dùng không có chỗ nào để đọc hay chép toàn văn.
+let ketQuaLoiThoai = []
+
+function vanBanGopLoiThoai(ds = ketQuaLoiThoai) {
+  return ds.map((k) =>
+    `## ${k.tieuDe || k.videoId}${k.tenKenh ? ' — ' + k.tenKenh : ''}\n` +
+    `(nguồn: https://www.youtube.com/watch?v=${k.videoId} · ${k.soTu} từ)\n\n${k.vanBan}`
+  ).join('\n\n---\n\n')
+}
+
 function veLoiThoai(kq) {
   const hop = $('#danh-sach-loi-thoai')
   hop.innerHTML = ''
+  ketQuaLoiThoai = kq.ketQua || []
 
-  for (const k of (kq.ketQua || [])) {
+  const tong = ketQuaLoiThoai.reduce((a, k) => a + (k.soTu || 0), 0)
+  $('#tom-tat-loi-thoai').innerHTML = ketQuaLoiThoai.length
+    ? `<span class="huy-hieu-xong">✔ Lấy được ${ketQuaLoiThoai.length}/${ketQuaLoiThoai.length + (kq.loiVideo || []).length} video</span> · ` +
+      `${tong.toLocaleString('vi-VN')} từ` + (duAnHienTai ? ' · <b>đã lưu vào dự án</b> (màn Kịch bản dùng được ngay)' : ' · chưa lưu vào dự án nào')
+    : `<span class="huy-hieu-loi">✘ Không lấy được video nào</span>`
+  $('#hang-nut-loi-thoai-gop').hidden = !ketQuaLoiThoai.length
+
+  ketQuaLoiThoai.forEach((k, i) => {
     const the = document.createElement('div')
-    the.className = 'the-con'
+    the.className = 'the-con the-xong'
     the.innerHTML = `
       <div class="hang-dau-bang">
         <b>${thoat(k.tieuDe || k.videoId)}</b>
@@ -683,16 +709,59 @@ function veLoiThoai(kq) {
         định dạng <b>${thoat(k.dinhDang)}</b> ·
         bỏ <b>${k.tyLeBoLap}%</b> cue lặp cuộn (${k.soCue} → ${k.soCueSauKhiBoLap})
       </div>
-      <div class="xem-truoc">${thoat((k.vanBan || '').slice(0, 400))}…</div>`
+      <textarea class="o-loi-thoai-video" rows="8" data-i="${i}"></textarea>
+      <div class="hang-nut">
+        <button class="nut nut-xanh nut-chep-mot" data-i="${i}">Chép</button>
+        <button class="nut nut-phu nut-xuat-mot" data-i="${i}">Xuất Word / txt…</button>
+        <span class="ghi-chu ghi-chu-mot"></span>
+      </div>`
+    // Gán value (không nhét vào innerHTML) để chữ có dấu < > & không vỡ.
+    the.querySelector('textarea').value = k.vanBan || ''
     hop.append(the)
-  }
+  })
 
   for (const l of (kq.loiVideo || [])) {
     const the = document.createElement('div')
     the.className = 'the-con the-loi'
-    the.innerHTML = `<b>${thoat(l.videoId)}</b><div class="ghi-chu">${thoat(l.loi)}</div>`
+    the.innerHTML = `<b>✘ ${thoat(l.videoId)}</b><div class="ghi-chu">${thoat(l.loi)}</div>`
     hop.append(the)
   }
+}
+
+// Người dùng sửa trong ô thì chép/xuất lấy bản đã sửa.
+$('#danh-sach-loi-thoai').addEventListener('input', (su) => {
+  const o = su.target.closest('.o-loi-thoai-video')
+  if (o && ketQuaLoiThoai[o.dataset.i]) ketQuaLoiThoai[o.dataset.i].vanBan = o.value
+})
+
+$('#danh-sach-loi-thoai').addEventListener('click', async (su) => {
+  const nut = su.target.closest('.nut-chep-mot, .nut-xuat-mot')
+  if (!nut) return
+  const k = ketQuaLoiThoai[nut.dataset.i]
+  if (!k) return
+  const ghiChu = nut.parentElement.querySelector('.ghi-chu-mot')
+  if (nut.classList.contains('nut-chep-mot')) { await chepVaBao(k.vanBan, ghiChu); return }
+  await xuatVaBao(k.vanBan, `loi-thoai ${k.tieuDe || k.videoId}`, k.tieuDe || k.videoId, ghiChu)
+})
+
+$('#nut-chep-loi-thoai-gop').onclick = async () => chepVaBao(vanBanGopLoiThoai(), $('#ghi-chu-loi-thoai-gop'))
+$('#nut-xuat-loi-thoai-gop').onclick = async () =>
+  xuatVaBao(vanBanGopLoiThoai(), `loi-thoai ${ketQuaLoiThoai.length} video`, 'Lời thoại', $('#ghi-chu-loi-thoai-gop'))
+$('#nut-gop-sang-kiem-duyet').onclick = () => {
+  $('#o-ban-goc').value = vanBanGopLoiThoai()
+  $('#chi-tiet-ban-goc').open = true
+  capNhatTomTatBanGoc()
+  moMan('kiem-duyet')
+}
+
+// Dùng chung cho mọi nút "Xuất Word / txt…" (Lời thoại, Kịch bản).
+async function xuatVaBao(chu, tenGoiY, tieuDe, noiBao) {
+  if (!String(chu || '').trim()) { await baoTin('Chưa có nội dung để xuất.'); return }
+  const kq = await window.api.xuatTep(chu, tenGoiY, tieuDe, 'docx')
+  if (kq.huy) return
+  if (!kq.ok) { await baoTin(kq.loi); return }
+  if (noiBao) { noiBao.textContent = 'Đã xuất: ' + kq.duongDan; noiBao.className = 'ghi-chu ghi-chu-xanh ' + (noiBao.classList.contains('ghi-chu-mot') ? 'ghi-chu-mot' : '') }
+  datTienDo({ phanTram: 100, viec: 'Xuất tệp xong', chiTiet: kq.duongDan, trangThai: 'xong' })
 }
 
 // ---------------------------------------------------------------------------
@@ -831,6 +900,148 @@ $('#nut-gop-kich-ban').onclick = async () => {
   $('#ket-qua-gop').className = 'ghi-chu ghi-chu-xanh'
   $('#o-kiem-duyet').value = kq.chu
   await taiDuAn()
+  await hienKichBanHienTai(true)
+}
+
+// --- 0.6.0: ba cách viết + khối "Kịch bản hiện tại" ---------------------------
+function yeuCauKichBan() {
+  const yeuCau = {}
+  const dung = $('#o-dung-video-tham-khao')
+  const ds = dsDangTick('kich-ban')
+  if (dung && dung.checked && ds.length) yeuCau.videoThamKhao = choPromptKichBan(ds)
+  return yeuCau
+}
+
+function moTaThongKe(tk) {
+  if (!tk) return ''
+  return `${tk.soTu.toLocaleString('vi-VN')} từ · khoảng ${tk.phutUoc} phút đọc · ${tk.soCanh} cảnh` +
+    (tk.datMucTieu != null ? ` · đạt ${tk.datMucTieu}% mục tiêu` : '')
+}
+
+async function hienKichBanHienTai(cuonToi = false) {
+  if (!$('#o-kich-ban-hien-tai')) return
+  const kq = await window.api.docKichBanMoiNhat(duAnHienTai)
+  // Không có dự án thì đừng xoá thứ người dùng tự dán vào ô.
+  if (duAnHienTai || !$('#o-kich-ban-hien-tai').value.trim()) $('#o-kich-ban-hien-tai').value = kq.chu || ''
+  if (!duAnHienTai && $('#o-kich-ban-hien-tai').value.trim()) return
+  $('#tom-tat-kich-ban').innerHTML = kq.chu
+    ? `<span class="huy-hieu-xong">✔ ${thoat(kq.ten)}</span> · ${moTaThongKe(kq.thongKe)} · dự án có ${kq.soBan} phiên bản (không bản nào bị ghi đè)`
+    : (duAnHienTai ? 'Dự án này chưa có kịch bản nào — viết bằng một trong ba cách ở trên.' : 'Chưa chọn dự án. Vẫn dán/sửa được ở ô dưới rồi chép hoặc xuất.')
+  if (cuonToi && kq.chu) $('#the-kich-ban-hien-tai').scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+async function capNhatUocApi() {
+  const u = await window.api.uocKichBanApi(duAnHienTai, $('#chon-skill').value)
+  const tiepTuc = u.daCoPhan ? ` · dự án đã có ${u.daCoPhan} phần viết dở — "Viết tự động" sẽ <b>chạy tiếp</b> từ đó` : ''
+  $('#uoc-kich-ban-api').innerHTML = (u.coKhoa
+    ? `Mô hình: <b>${thoat(u.tenMoHinh)}</b> · ${u.soLuot} lượt gọi · ước tính <b>~$${u.usd}</b>` +
+      ` (có thể tới ~$${u.usdCoSuyNghi} vì phần "suy nghĩ" của mô hình cũng tính tiền)`
+    : '<span class="canh-bao-manh">Chưa có khoá Claude API — vào Cài đặt → Claude API. Không có khoá thì dùng Cách 2 (miễn phí).</span>') + tiepTuc
+}
+
+async function chayVietTuDong(lamLai) {
+  const u = await window.api.uocKichBanApi(duAnHienTai, $('#chon-skill').value)
+  if (!u.coKhoa) { await baoTin('Chưa có khoá Claude API. Vào Cài đặt → Claude API. Không có khoá thì dùng Cách 2 (miễn phí).'); return }
+  if (!duAnHienTai) { await baoTin('Chọn (hoặc tạo) dự án ở màn Lời thoại trước — tư liệu và các phần viết được lưu vào đó.'); return }
+  const loiNhac = lamLai
+    ? `Viết LẠI TỪ ĐẦU (bỏ dàn ý và ${u.daCoPhan} phần đang viết dở; các phiên bản kịch bản đã lưu vẫn giữ). Ước tính ~$${u.usd}–${u.usdCoSuyNghi}. Chạy?`
+    : `Claude sẽ viết ${u.daCoPhan ? 'TIẾP các phần còn thiếu' : 'cả kịch bản'} bằng ${u.tenMoHinh}. Ước tính ~$${u.usd}–${u.usdCoSuyNghi} (trừ vào tài khoản Claude API). Chạy?`
+  if (!(await hoiCo(loiNhac, lamLai ? 'Viết lại' : 'Viết'))) return
+  $('#nut-viet-tu-dong').disabled = true
+  $('#nut-viet-lai-tu-dau').disabled = true
+  $('#ghi-chu-tu-dong').textContent = 'Đang viết… (thanh tiến độ ở dưới cùng, mỗi phần mất khoảng 1–3 phút)'
+  $('#ghi-chu-tu-dong').className = 'ghi-chu'
+  try {
+    const kq = await window.api.vietTuDong(duAnHienTai, $('#chon-skill').value, yeuCauKichBan(), !!lamLai)
+    if (!kq.ok) {
+      $('#ghi-chu-tu-dong').textContent = kq.loi
+      $('#ghi-chu-tu-dong').className = 'ghi-chu ghi-chu-vang'
+      return
+    }
+    $('#ghi-chu-tu-dong').innerHTML = `<span class="huy-hieu-xong">✔ Xong</span> ${thoat(kq.luu.ten)} · ${kq.soPhan} phần · chi phí ~$${kq.tien}` +
+      (kq.canhBao.length ? ` · <span class="canh-bao-manh">${thoat(kq.canhBao.join(' · '))}</span>` : '')
+    $('#ghi-chu-tu-dong').className = 'ghi-chu'
+    await taiDuAn()
+    await hienKichBanHienTai(true)
+  } finally {
+    $('#nut-viet-tu-dong').disabled = false
+    $('#nut-viet-lai-tu-dau').disabled = false
+    capNhatUocApi()
+  }
+}
+$('#nut-viet-tu-dong').onclick = () => chayVietTuDong(false)
+$('#nut-viet-lai-tu-dau').onclick = () => chayVietTuDong(true)
+$('#nut-dung-viet').onclick = async () => {
+  await window.api.dungVietTuDong()
+  $('#ghi-chu-tu-dong').textContent = 'Sẽ dừng sau khi Claude viết xong phần đang chạy…'
+}
+$('#chon-skill').addEventListener('change', capNhatUocApi)
+
+$('#nut-prompt-mot-lan').onclick = async () => {
+  const yeuCau = yeuCauKichBan()
+  const kq = await window.api.promptMotLan(duAnHienTai, $('#chon-skill').value, yeuCau)
+  await chepVaBao(kq.prompt, $('#ghi-chu-mot-lan'))
+  const thieu = [!kq.coSkill ? 'chưa chọn skill' : '', !kq.coLoiThoai ? 'dự án chưa có lời thoại tư liệu' : ''].filter(Boolean)
+  if (yeuCau.videoThamKhao) $('#ghi-chu-mot-lan').textContent += ` · kèm ${yeuCau.videoThamKhao.length} video tham khảo`
+  if (thieu.length) {
+    $('#ghi-chu-mot-lan').textContent += ' · lưu ý: ' + thieu.join(', ')
+    $('#ghi-chu-mot-lan').className = 'ghi-chu ghi-chu-vang'
+  }
+}
+
+$('#nut-nhan-ban-dan').onclick = async () => {
+  const chu = $('#o-ban-dan').value
+  if (!chu.trim()) { await baoTin('Dán toàn bộ nội dung artifact "Kịch bản" vào ô trước đã.'); return }
+  if (!duAnHienTai && !(await hoiCo('Chưa chọn dự án — kịch bản sẽ chỉ hiện ở khối "Kịch bản hiện tại", không được lưu. Vẫn nhận?', 'Vẫn nhận'))) return
+  const kq = await window.api.nhanBanDan(duAnHienTai, chu)
+  if (!kq.ok) { await baoTin(kq.loi); return }
+  const canhBao = []
+  if (!kq.soTieuDe) canhBao.push('không thấy dòng "## PHẦN n" nào — nhận cả bài như một phần')
+  if (kq.thieu.length) canhBao.push(`THIẾU phần ${kq.thieu.join(', ')} — kiểm tra đã copy đủ artifact chưa`)
+  if (kq.trung.length) canhBao.push(`phần ${kq.trung.join(', ')} xuất hiện hai lần — giữ bản sau`)
+  $('#ket-qua-ban-dan').innerHTML = `<span class="${canhBao.length ? 'huy-hieu-canh-bao' : 'huy-hieu-xong'}">${canhBao.length ? '!' : '✔'} Nhận ${kq.soPhan} phần</span> · ` +
+    moTaThongKe(kq.thongKe) + (kq.luu ? ` · đã lưu ${thoat(kq.luu.ten)}` : '') +
+    (canhBao.length ? ` · <span class="canh-bao-manh">${thoat(canhBao.join(' · '))}</span>` : '')
+  $('#o-ban-dan').value = ''
+  if (kq.luu) { await taiDuAn(); await hienKichBanHienTai(true) } else {
+    $('#o-kich-ban-hien-tai').value = kq.chu
+    $('#tom-tat-kich-ban').textContent = moTaThongKe(kq.thongKe) + ' · chưa lưu (chưa chọn dự án)'
+  }
+}
+
+$('#nut-chep-kich-ban').onclick = async () => {
+  const chu = $('#o-kich-ban-hien-tai').value
+  if (!chu.trim()) { await baoTin('Chưa có kịch bản.'); return }
+  await chepVaBao(chu, $('#ghi-chu-kich-ban'))
+}
+$('#nut-xuat-kich-ban').onclick = async () => {
+  const ten = (danhSachDuAnHienTai.find((d) => d.ma === duAnHienTai) || {}).ten || 'kich-ban'
+  await xuatVaBao($('#o-kich-ban-hien-tai').value, 'kich-ban ' + ten, '', $('#ghi-chu-kich-ban'))
+}
+$('#nut-luu-ban-moi').onclick = async () => {
+  if (!duAnHienTai) { await baoTin('Chọn dự án trước đã.'); return }
+  const kq = await window.api.luuKichBanTrucTiep(duAnHienTai, $('#o-kich-ban-hien-tai').value)
+  if (!kq.ok) { await baoTin(kq.loi); return }
+  await taiDuAn()
+  await hienKichBanHienTai()
+  $('#ghi-chu-kich-ban').textContent = 'Đã lưu ' + kq.ten
+  $('#ghi-chu-kich-ban').className = 'ghi-chu ghi-chu-xanh'
+}
+$('#nut-kich-ban-sang-kiem-duyet').onclick = async () => {
+  const chu = $('#o-kich-ban-hien-tai').value
+  if (!chu.trim()) { await baoTin('Chưa có kịch bản.'); return }
+  $('#o-kiem-duyet').value = chu
+  $('#ghi-chu-nguon-kiem').textContent = 'Từ màn Kịch bản'
+  $('#ghi-chu-nguon-kiem').className = 'ghi-chu ghi-chu-xanh'
+  moMan('kiem-duyet')
+}
+$('#nut-kich-ban-sang-prompt').onclick = async () => {
+  const chu = $('#o-kich-ban-hien-tai').value
+  if (!chu.trim()) { await baoTin('Chưa có kịch bản.'); return }
+  $('#o-kich-ban-anh').value = chu
+  $('#ghi-chu-nguon-anh').textContent = 'Từ màn Kịch bản'
+  $('#ghi-chu-nguon-anh').className = 'ghi-chu ghi-chu-xanh'
+  moMan('prompt-anh')
 }
 
 // ---------------------------------------------------------------------------
@@ -1000,8 +1211,12 @@ $('#nut-cat-canh').onclick = async () => {
   // buộc chéo làm người dùng không dùng riêng được một tính năng.
   const chu = $('#o-kich-ban-anh').value.trim()
   const kq = await window.api.catCanh(chu, duAnHienTai, gop)
-  if (!kq.ok) { await baoTin(kq.loi); return }
+  if (!kq.ok) {
+    $('#thong-ke-canh').innerHTML = `<span class="huy-hieu-loi">✘ Cắt cảnh không được</span> ${thoat(kq.loi)}`
+    return
+  }
   canhHienTai = kq.canh
+  canhHienTai.tk = kq.thongKe
   moTaTheoCanh = {}
   promptThangHienTai = {}
   cacPromptHienTai = []
@@ -1009,12 +1224,27 @@ $('#nut-cat-canh').onclick = async () => {
   veBangCanh()
 }
 
+// Dấu hiệu rõ ràng: xanh = cắt xong, vàng = xong nhưng còn vài cảnh lệch cỡ
+// (kèm SỐ cảnh và lý do), đỏ = không cắt được.
 function veThongKeCanh(tk) {
-  $('#thong-ke-canh').innerHTML = `
-    <b>${tk.soCanh}</b> cảnh · ${tk.tongTu.toLocaleString('vi-VN')} từ ·
-    trung bình <b>${tk.tuTrungBinh} từ/cảnh</b> · tổng ${tk.tongPhut} phút
-    ${tk.canhQuaNgan ? ` · <span class="canh-bao-manh">${tk.canhQuaNgan} cảnh quá ngắn</span>` : ''}
-    ${tk.canhQuaDai ? ` · <span class="canh-bao-manh">${tk.canhQuaDai} cảnh quá dài</span>` : ''}`
+  const ds = (arr) => arr.slice(0, 25).join(', ') + (arr.length > 25 ? ` … (+${arr.length - 25})` : '')
+  const coLech = tk.canhQuaNgan || tk.canhQuaDai
+  const dong = [
+    `<span class="${coLech ? 'huy-hieu-canh-bao' : 'huy-hieu-xong'}">${coLech ? '✔ Cắt xong — có cảnh cần xem' : '✔ Cắt cảnh xong'}</span>
+     <b>${tk.soCanh}</b> cảnh · ${tk.tongTu.toLocaleString('vi-VN')} từ · trung bình <b>${tk.tuTrungBinh} từ/cảnh</b> · tổng ${tk.tongPhut} phút`
+  ]
+  if (tk.canhQuaNgan) {
+    dong.push(`<div class="canh-bao-manh">${tk.canhQuaNgan} cảnh QUÁ NGẮN (dưới ${tk.nguongNgan} từ ≈ dưới 4 giây — ảnh vừa hiện đã đổi): cảnh ${ds(tk.soCanhNgan || [])}</div>`)
+  }
+  if (tk.canhQuaDai) {
+    dong.push(`<div class="canh-bao-manh">${tk.canhQuaDai} cảnh QUÁ DÀI (trên ${tk.nguongDai} từ ≈ trên 15 giây — một ảnh đứng yên quá lâu): cảnh ${ds(tk.soCanhDai || [])}</div>`)
+  }
+  if (coLech) {
+    dong.push('<div class="ghi-chu">Tool đã tự nhập cảnh ngắn vào cảnh bên cạnh và tự tách câu dài ở dấu phẩy / liên từ (and, but, while…). ' +
+      'Cảnh còn sót là chỗ không tự làm được: câu rất dài không có chỗ ngắt, hoặc một câu ngắn kẹp giữa hai cảnh đã đầy. ' +
+      'Không bắt buộc sửa — muốn sửa thì thêm dấu chấm/phẩy vào câu đó trong kịch bản rồi cắt lại. Các dòng này tô vàng trong bảng.</div>')
+  }
+  $('#thong-ke-canh').innerHTML = dong.join('')
 }
 
 function veBangCanh() {
@@ -1024,9 +1254,11 @@ function veBangCanh() {
   if (!canhHienTai.length) {
     than.innerHTML = '<tr><td colspan="6" class="ghi-chu" style="padding:18px">Chưa cắt cảnh.</td></tr>'
   }
+  const tk = canhHienTai.tk || null
   canhHienTai.slice(0, 200).forEach((c, i) => {
     const p = cacPromptHienTai[i]
     const tr = document.createElement('tr')
+    if (tk && ((tk.soCanhNgan || []).includes(c.so) || (tk.soCanhDai || []).includes(c.so))) tr.className = 'dong-lech'
     tr.innerHTML = `
       <td class="so-lieu">${c.so}</td>
       <td class="so-lieu">${thoat(c.ten)}.png</td>
@@ -1124,6 +1356,49 @@ $('#nut-xuat-prompt').onclick = async () => {
     (kq.chuoiSoFlow ? ` · chuoi-so-flow.txt: ${kq.chuoiSoFlow}` : '')
   $('#ghi-chu-xuat').className = 'ghi-chu ghi-chu-xanh'
   datTienDo({ phanTram: 100, viec: 'Xuất prompt xong', chiTiet: kq.thuMuc, trangThai: 'xong' })
+}
+
+// --- Bước 2: Style mẫu (0.6.0) ---------------------------------------------
+const O_STYLE = { mau: '#o-prompt-mau', style: '#o-style-chung', amBan: '#o-am-ban', camera: '#o-camera', anhSang: '#o-anh-sang', khongKhi: '#o-khong-khi', duoi: '#o-duoi' }
+
+async function napStyleAnh() {
+  const { o, macDinh } = await window.api.docStyleAnh()
+  for (const [k, chon] of Object.entries(O_STYLE)) {
+    $(chon).value = o[k] || ''
+    if (macDinh[k]) $(chon).placeholder = macDinh[k]
+  }
+  $('#o-co-anh-mau').checked = !!o.coAnhMau
+  veTrangThaiStyle(o)
+}
+
+function veTrangThaiStyle(o) {
+  const co = []
+  if (o.mau) co.push('prompt mẫu')
+  if (o.style) co.push('style chung riêng')
+  if (o.coAnhMau) co.push('ảnh mẫu đính kèm')
+  $('#ghi-chu-style').innerHTML = co.length
+    ? `<span class="huy-hieu-xong">✔ Đang dùng: ${thoat(co.join(' + '))}</span>`
+    : '<span class="canh-bao-manh">Chưa có style riêng — đang dùng style mặc định "cinematic documentary still".</span>'
+}
+
+$('#nut-luu-style').onclick = async () => {
+  const o = { coAnhMau: $('#o-co-anh-mau').checked }
+  for (const [k, chon] of Object.entries(O_STYLE)) o[k] = $(chon).value
+  const kq = await window.api.luuStyleAnh(o)
+  veTrangThaiStyle(kq.o)
+  // Prompt đã sinh trước đó theo style cũ — nhắc sinh lại.
+  if (cacPromptHienTai.length) {
+    $('#ghi-chu-xuat').textContent = 'Style vừa đổi — bấm "Sinh toàn bộ prompt" lại để áp style mới.'
+    $('#ghi-chu-xuat').className = 'ghi-chu ghi-chu-vang'
+  }
+}
+
+$('#nut-xem-thu-style').onclick = async () => {
+  await $('#nut-luu-style').onclick()
+  const p = await window.api.xemThuPromptAnh(canhHienTai.slice(0, 1))
+  $('#xem-thu-style').hidden = false
+  $('#xem-thu-style').textContent = (canhHienTai.length ? 'Cảnh 1 (không nhờ Claude): ' : 'Câu ví dụ (chưa cắt cảnh): ') + p.prompt +
+    ($('#o-prompt-mau').value.trim() ? '\n\n→ Prompt mẫu chỉ có tác dụng khi nhờ Claude ở Bước 3.' : '')
 }
 
 // Kho nhân vật
@@ -1344,10 +1619,8 @@ $('#nut-chep-loi-thoai').onclick = async () => {
 $('#nut-luu-loi-thoai').onclick = async () => {
   const chu = $('#o-loi-thoai-nhanh').value
   if (!chu.trim()) { await baoTin('Ô còn trống.'); return }
-  const kq = await window.api.luuTep(chu, 'loi-thoai.md')
-  if (kq.huy) return
-  $('#ghi-chu-nhanh').textContent = 'Đã lưu: ' + kq.duongDan
-  $('#ghi-chu-nhanh').className = 'ghi-chu ghi-chu-xanh'
+  const dau = ($('#ghi-chu-nhanh').textContent || '').split(' · ')[0]
+  await xuatVaBao(chu, 'loi-thoai ' + (dau || 'video'), '', $('#ghi-chu-nhanh'))
 }
 
 // Hai nút "đẩy sang" là cầu nối TUỲ CHỌN giữa các màn: dùng khi muốn nối, còn
@@ -2101,13 +2374,15 @@ $('#nut-cat-canh-ft').onclick = async () => {
   const kq = await window.api.catCanh($('#o-kich-ban-anh').value.trim(), duAnHienTai, gop)
   if (!kq.ok) { await baoTin(kq.loi + ' (Kịch bản lấy từ ô của màn Prompt ảnh hoặc từ dự án.)'); return }
   canhHienTai = kq.canh
+  canhHienTai.tk = kq.thongKe
   moTaTheoCanh = {}
   promptThangHienTai = {}
   cacPromptHienTai = []
   veThongKeCanh(kq.thongKe)
   veBangCanh()
-  $('#ghi-chu-buoc1-ft').textContent = `${kq.thongKe.soCanh} cảnh · ${kq.thongKe.tongPhut} phút`
-  $('#ghi-chu-buoc1-ft').className = 'ghi-chu ghi-chu-xanh'
+  $('#ghi-chu-buoc1-ft').innerHTML = `<span class="huy-hieu-xong">✔ Cắt cảnh xong</span> ${kq.thongKe.soCanh} cảnh · ${kq.thongKe.tongPhut} phút` +
+    (kq.thongKe.canhQuaNgan + kq.thongKe.canhQuaDai ? ' · có cảnh lệch cỡ — xem chi tiết ở màn Prompt ảnh' : '')
+  $('#ghi-chu-buoc1-ft').className = 'ghi-chu'
   await kiemKhopFt()
   veFootage()
 }
@@ -2475,6 +2750,22 @@ window.smokeDuLieuMau = async function () {
   $('#o-chuoi-so-flow').value = '2,4-5'
   veKiemDu({ ok: false, soCanh: 5, thieuHinh: [4], trungSo: [], thua: [], thieuAudio: [], haiHinh: [], coAudio: false })
   veFootage()
+
+  // 0.6.0: kết quả lời thoại theo dự án, kịch bản hiện tại, trạng thái cắt cảnh.
+  const vanMau = 'In the spring of 1927 the river rose faster than anyone in the valley had ever seen. ' +
+    'Families carried what they could up the hill, and by nightfall the town below was gone. '
+  veLoiThoai({
+    ketQua: [
+      { videoId: 'mauVideo000', tieuDe: tieuDe[0], tenKenh: kenh[0], soTu: 5230, thoiLuongGiay: 2100, dinhDang: 'json3', tyLeBoLap: 0, soCue: 812, soCueSauKhiBoLap: 812, vanBan: vanMau.repeat(12) },
+      { videoId: 'mauVideo001', tieuDe: tieuDe[1], tenKenh: kenh[1], soTu: 3120, thoiLuongGiay: 1500, dinhDang: 'vtt', tyLeBoLap: 38, soCue: 900, soCueSauKhiBoLap: 558, vanBan: vanMau.repeat(8) }
+    ],
+    loiVideo: [{ videoId: 'mauVideo009', loi: 'Video có phụ đề nhưng KHÔNG có bản tiếng "en" (kể cả tự động).' }]
+  })
+  $('#the-ket-qua-loi-thoai').hidden = false
+  $('#o-kich-ban-hien-tai').value = vanMau.repeat(20)
+  $('#tom-tat-kich-ban').innerHTML = '<span class="huy-hieu-xong">✔ kich-ban-v3.md</span> · 11.040 từ · khoảng 73,6 phút đọc · 409 cảnh · đạt 100% mục tiêu · dự án có 3 phiên bản'
+  $('#uoc-kich-ban-api').innerHTML = 'Mô hình: <b>Claude Opus 5.5 (khuyến nghị — viết hay nhất trong mức giá vừa)</b> · 9 lượt gọi · ước tính <b>~$0.61</b> (có thể tới ~$1.22 vì phần "suy nghĩ" của mô hình cũng tính tiền)'
+  veThongKeCanh({ soCanh: 409, tongTu: 11040, tuTrungBinh: 27, tongPhut: 61, canhQuaNgan: 2, canhQuaDai: 1, soCanhNgan: [57, 212], soCanhDai: [130], nguongNgan: 12, nguongDai: 45 })
   return { soDong: dong.length, daChon: videoDaChon.length, canhFootage: keHoachFt.canh.length }
 }
 
@@ -2496,6 +2787,7 @@ window.smokeKiemKhoaCaiDat = function () {
 
 // ---------------------------------------------------------------------------
 taiCaiDat()
+  .then(() => napStyleAnh())
   .then(() => taiVideoDaChon())
   .then(() => taiDuAn())
   .then(() => veKhaNangCapNhat())

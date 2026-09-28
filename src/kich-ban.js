@@ -283,7 +283,128 @@ function gopKichBan(cacPhan) {
   return (cacPhan || []).filter(Boolean).map((p) => p.trim()).join('\n\n')
 }
 
+// ---------------------------------------------------------------------------
+// 0.6.0 — CÁCH NHANH: MỘT prompt duy nhất trên claude.ai
+//
+// Người dùng dán một lần; Claude lập dàn ý rồi viết TỪNG PHẦN vào CÙNG MỘT
+// artifact, dừng sau mỗi phần chờ gõ "tiếp". Hết bài, bấm Copy của artifact
+// một lần, dán về tool. Chống lặp nhờ Claude nhìn thấy cả cuộc trò chuyện +
+// lệnh tự rà trước mỗi phần.
+// ---------------------------------------------------------------------------
+
+function taoPromptMotLan({ skill = '', loiThoai = '', yeuCau = {} } = {}) {
+  const y = { ...YEU_CAU_MAC_DINH, ...yeuCau }
+  const phan = chiaPhan(y.soTuMucTieu, y.soPhan)
+  const khoi = []
+
+  if (skill.trim()) khoi.push('===== SKILL VIẾT KỊCH BẢN =====\n' + skill.trim())
+
+  khoi.push([
+    '===== TƯ LIỆU GỐC =====',
+    'Lời thoại bóc từ video tham khảo. Chỉ để hiểu chủ đề — KHÔNG viết lại theo,',
+    'không bám trình tự, không mượn câu chữ.',
+    '',
+    loiThoai.trim() || '(chưa có lời thoại — viết dựa trên yêu cầu bên dưới)'
+  ].join('\n'))
+
+  const thamKhao = Array.isArray(y.videoThamKhao) ? y.videoThamKhao.filter((v) => v && v.tieuDe) : []
+  if (thamKhao.length) {
+    khoi.push([
+      '===== VIDEO THAM KHẢO ĐANG CHẠY TỐT (khán giả Mỹ) =====',
+      'Chỉ để hiểu người xem đang quan tâm GÓC NÀO. Không chép tiêu đề, không bám cấu trúc.',
+      ...thamKhao.slice(0, 15).map((v, i) => `${i + 1}. "${v.tieuDe}"${v.tenKenh ? ' — ' + v.tenKenh : ''}`)
+    ].join('\n'))
+  }
+
+  khoi.push([
+    '===== VIỆC CẦN LÀM =====',
+    `Viết một kịch bản ${y.soTuMucTieu.toLocaleString('vi-VN')} từ bằng ${y.ngonNgu}, chia ${y.soPhan} phần:`,
+    ...phan.map((p) => `  Phần ${p.so}: khoảng ${p.soTuMucTieu.toLocaleString('vi-VN')} từ`),
+    '',
+    `Giọng kể: ${y.giongKe}`,
+    `Đối tượng: ${y.doiTuong}`,
+    `Mở đầu: ${y.hook}`,
+    `Kêu gọi: ${y.cta}`,
+    `Điều cấm: ${y.dieuCam}`,
+    'Ít nhất hai phần phải có GÓC NHÌN RIÊNG của người làm kênh — nội dung chỉ thuật lại',
+    'thì YouTube không cho bật tiền.',
+    '',
+    '===== CÁCH LÀM — LÀM ĐÚNG THỨ TỰ =====',
+    `1. Lượt này: trả lời DÀN Ý ${y.soPhan} phần (tiêu đề + 3 ý chính mỗi phần), rồi viết`,
+    '   PHẦN 1 vào MỘT artifact (tài liệu) tên "Kịch bản". Dừng lại.',
+    '2. Mỗi lần tôi gõ "tiếp": viết phần kế tiếp và THÊM VÀO CUỐI CHÍNH artifact đó',
+    '   (cập nhật artifact cũ, KHÔNG tạo artifact mới). Dừng lại sau mỗi phần.',
+    `3. Mỗi phần mở đầu bằng MỘT dòng tiêu đề đúng dạng: ## PHẦN <số>`,
+    '   Ngoài dòng đó, artifact chỉ chứa văn đọc — không ghi chú, không chỉ dẫn quay,',
+    '   không in đậm, không "[nhạc]", không đếm từ.',
+    '4. TRƯỚC khi viết mỗi phần, rà các phần đã viết: không dùng lại cụm từ, cách vào',
+    '   câu, hình ảnh so sánh hay ý đã nói. Vào thẳng mạch, không chào lại, không tóm',
+    '   tắt phần trước.',
+    `5. Viết xong PHẦN ${y.soPhan} thì ghi dòng "HẾT KỊCH BẢN" ngoài artifact.`
+  ].join('\n'))
+
+  return khoi.join('\n\n')
+}
+
+// Tách bài dán về (toàn bộ artifact) thành từng phần theo dòng "## PHẦN n".
+// Chịu được: "PHẦN 3", "Phần 3:", "PART 3", "**PHẦN 3**", có/không dấu #.
+// Không thấy dòng tiêu đề nào thì coi cả bài là một phần.
+function tachPhanBanDan(chu) {
+  const dong = String(chu || '').replace(/\r\n?/g, '\n').split('\n')
+  const phan = []
+  let hienTai = null
+  let truocTieuDe = []
+  const tieuDeRe = /^\s*(?:#{1,4}\s*)?(?:\*\*)?\s*(?:PHẦN|PHAN|Phần|phần|PART|Part)\s+(\d+)\b[^\n]*$/
+
+  for (const d of dong) {
+    const m = d.match(tieuDeRe)
+    if (m && d.replace(/[#*\s]/g, '').length <= 60) {
+      if (hienTai) phan.push(hienTai)
+      hienTai = { so: Number(m[1]), dong: [] }
+      continue
+    }
+    if (/^\s*HẾT KỊCH BẢN\s*$/i.test(d)) continue
+    if (hienTai) hienTai.dong.push(d)
+    else truocTieuDe.push(d)
+  }
+  if (hienTai) phan.push(hienTai)
+
+  const sach = (ds) => lamSachVanDoc(ds.join('\n'))
+  if (!phan.length) {
+    const toanBo = sach(truocTieuDe)
+    return { phan: toanBo ? [toanBo] : [], soTieuDe: 0, thieu: [], trung: [] }
+  }
+
+  // Thứ tự theo SỐ phần, không theo thứ tự xuất hiện; trùng số thì giữ bản sau
+  // (Claude viết lại phần đó).
+  const theoSo = new Map()
+  const trung = []
+  for (const p of phan) {
+    if (theoSo.has(p.so)) trung.push(p.so)
+    theoSo.set(p.so, sach(p.dong))
+  }
+  const so = [...theoSo.keys()].sort((a, b) => a - b)
+  const lonNhat = so[so.length - 1]
+  const thieu = []
+  for (let i = 1; i <= lonNhat; i++) if (!theoSo.has(i)) thieu.push(i)
+  return { phan: so.map((n) => theoSo.get(n)), soTieuDe: phan.length, thieu, trung }
+}
+
+// Bỏ định dạng markdown lọt vào văn đọc (TTS sẽ đọc cả dấu * và #).
+function lamSachVanDoc(chu) {
+  return String(chu || '')
+    .split('\n')
+    .filter((d) => !/^\s*```/.test(d))
+    .map((d) => d.replace(/^\s*#{1,6}\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/(^|\s)\*(\S[^*]*?)\*(?=\s|$|[.,!?])/g, '$1$2'))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 module.exports = {
+  taoPromptMotLan,
+  tachPhanBanDan,
+  lamSachVanDoc,
   YEU_CAU_MAC_DINH,
   chiaPhan,
   taoPromptDanY,

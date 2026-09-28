@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('api', {
   layLoiThoai: (chuNhap, duAnMa, taiKhoanId) => goi('loithoai:lay', { chuNhap, duAnMa, taiKhoanId }),
   layLoiThoaiMotVideo: (link, taiKhoanId) => goi('loithoai:mot-video', { link, taiKhoanId }),
   luuTep: (chu, tenGoiY) => goi('tep:luu', { chu, tenGoiY }),
+  xuatTep: (chu, tenGoiY, tieuDe, kieu) => goi('tep:xuat', { chu, tenGoiY, tieuDe, kieu }),
 
   // Dự án
   danhSachDuAn: () => goi('duan:danh-sach'),
@@ -56,6 +57,12 @@ contextBridge.exposeInMainWorld('api', {
   luuPhan: (duAnMa, phanSo, chu) => goi('kichban:luu-phan', { duAnMa, phanSo, chu }),
   gopKichBan: (duAnMa) => goi('kichban:gop', { duAnMa }),
   luuKichBanTrucTiep: (duAnMa, chu) => goi('kichban:luu-truc-tiep', { duAnMa, chu }),
+  promptMotLan: (duAnMa, skillId, yeuCau) => goi('kichban:prompt-mot-lan', { duAnMa, skillId, yeuCau }),
+  nhanBanDan: (duAnMa, chu) => goi('kichban:nhan-ban-dan', { duAnMa, chu }),
+  uocKichBanApi: (duAnMa, skillId) => goi('kichban:uoc-api', { duAnMa, skillId }),
+  vietTuDong: (duAnMa, skillId, yeuCau, lamLai) => goi('kichban:tu-dong', { duAnMa, skillId, yeuCau, lamLai }),
+  dungVietTuDong: () => goi('kichban:dung'),
+  docKichBanMoiNhat: (duAnMa) => goi('kichban:doc-moi-nhat', { duAnMa }),
 
   // Mở tệp từ máy — dùng chung cho Lời thoại, Kiểm duyệt và Prompt ảnh
   moTep: (tieuDe) => goi('tep:doc', { tieuDe }),
@@ -72,6 +79,9 @@ contextBridge.exposeInMainWorld('api', {
     goi('promptanh:tao', { canh, moTaTheoCanh, promptThang }),
   xuatPromptAnh: (canh, cacPrompt, duAnMa, keHoachFootage) => goi('promptanh:xuat', { canh, cacPrompt, duAnMa, keHoachFootage }),
   ghiKho: (loai, danhSach) => goi('kho:ghi', { loai, danhSach }),
+  docStyleAnh: () => goi('promptanh:doc-style'),
+  luuStyleAnh: (o) => goi('promptanh:luu-style', { o }),
+  xemThuPromptAnh: (canh) => goi('promptanh:xem-thu', { canh }),
 
   // Footage thật (0.5.0)
   nguonFootage: () => goi('footage:nguon'),

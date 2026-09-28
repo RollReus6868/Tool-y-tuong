@@ -29,15 +29,69 @@ function tachCauGiuDau(chu) {
 // vì cảnh cụt nghĩa thì prompt ảnh sinh ra cũng vô nghĩa.
 function cheNhoCau(cau, toiDaTu) {
   if (demTu(cau) <= toiDaTu) return [cau]
-  const manh = cau.split(/(?<=,|;|—|–)\s+/)
+  const manh = cau.split(/(?<=,|;|—|–|:)\s+/).flatMap((m) => cheTaiLienTu(m, toiDaTu))
   const ra = []
   let dem = []
   for (const m of manh) {
+    // Thêm mảnh này mà vượt trần thì chốt trước — không thì vẫn ra cảnh 60 từ.
+    if (dem.length && demTu(dem.join(' ') + ' ' + m) > toiDaTu) { ra.push(dem.join(' ')); dem = [] }
     dem.push(m)
     if (demTu(dem.join(' ')) >= toiDaTu) { ra.push(dem.join(' ')); dem = [] }
   }
   if (dem.length) ra.push(dem.join(' '))
   return ra.filter(Boolean)
+}
+
+// Câu dài mà KHÔNG có dấu phẩy (hay gặp ở văn kể chuyện): cắt trước liên từ
+// gần giữa câu nhất. Không bao giờ cắt giữa cụm vô nghĩa.
+const LIEN_TU = /\s(?=(?:and|but|so|because|while|when|until|which|who|where|as|then|before|after|or|yet)\s)/gi
+function cheTaiLienTu(doan, toiDaTu) {
+  const soTu = demTu(doan)
+  if (soTu <= toiDaTu) return [doan]
+  const cho = []
+  let m
+  LIEN_TU.lastIndex = 0
+  while ((m = LIEN_TU.exec(doan))) cho.push(m.index)
+  if (!cho.length) return [doan]
+  // Chọn chỗ cắt làm hai nửa đều nhau nhất, mỗi nửa ≥ 6 từ.
+  let tot = null
+  for (const i of cho) {
+    const a = demTu(doan.slice(0, i)); const b = soTu - a
+    if (a < 6 || b < 6) continue
+    const lech = Math.abs(a - b)
+    if (!tot || lech < tot.lech) tot = { i, lech }
+  }
+  if (!tot) return [doan]
+  return [...cheTaiLienTu(doan.slice(0, tot.i).trim(), toiDaTu), ...cheTaiLienTu(doan.slice(tot.i).trim(), toiDaTu)]
+}
+
+// Cảnh quá ngắn (< toiThieu từ) thì nhập vào cảnh bên cạnh — ưu tiên cảnh
+// NGẮN HƠN — miễn cảnh sau khi nhập không vượt trần. Cảnh 5 từ chỉ đứng trên
+// màn hình chưa tới 2 giây: người xem chưa kịp nhìn đã đổi ảnh, lại tốn một
+// lượt render.
+function nhapCanhNgan(canh, { toiThieu = 12, tran = 45 } = {}) {
+  const ds = canh.map((c) => ({ ...c }))
+  let doi = true
+  while (doi) {
+    doi = false
+    for (let i = 0; i < ds.length; i++) {
+      if (ds[i].soTu >= toiThieu || ds.length < 2) continue
+      const trai = i > 0 ? ds[i - 1] : null
+      const phai = i < ds.length - 1 ? ds[i + 1] : null
+      const ung = [trai && { j: i - 1, c: trai }, phai && { j: i + 1, c: phai }]
+        .filter(Boolean)
+        .filter((x) => x.c.soTu + ds[i].soTu <= tran)
+        .sort((a, b) => a.c.soTu - b.c.soTu)
+      if (!ung.length) continue
+      const { j } = ung[0]
+      const dau = Math.min(i, j)
+      const chu = ds[dau].chu + ' ' + ds[dau + 1].chu
+      ds.splice(dau, 2, { chu, soTu: demTu(chu) })
+      doi = true
+      break
+    }
+  }
+  return ds
 }
 
 function catCanh(kichBan, {
@@ -70,13 +124,19 @@ function catCanh(kichBan, {
   }
   chot()
 
-  const sauGop = gopCanh > 1 ? gopNhieuCanh(canh, gopCanh) : canh
+  // Ngưỡng theo cỡ cảnh người dùng chọn: 27 từ/cảnh → nhập cảnh dưới 12 từ.
+  const gonGang = nhapCanhNgan(canh, {
+    toiThieu: Math.min(NGUONG_NGAN, Math.floor(tuMoiCanh * 0.45)),
+    tran: Math.max(toiDaTu, Math.min(NGUONG_DAI, Math.round(tuMoiCanh * 1.67)))
+  })
+  const sauGop = gopCanh > 1 ? gopNhieuCanh(gonGang, gopCanh) : gonGang
 
   return sauGop.map((c, i) => ({
     so: i + 1,                       // LIÊN TỤC TỪ 1 — xem ghi chú ở xuatPromptsTxt
     ten: String(i + 1).padStart(3, '0'),
     chu: c.chu,
     soTu: c.soTu,
+    ...(c.gop > 1 ? { gop: c.gop } : {}),
     giayUoc: Math.round((c.soTu / Math.max(1, tuMoiCanh)) * giayMoiCanh * 10) / 10
   }))
 }
@@ -87,23 +147,41 @@ function gopNhieuCanh(canh, moiNhom) {
     const nhom = canh.slice(i, i + moiNhom)
     ra.push({
       chu: nhom.map((c) => c.chu).join(' '),
-      soTu: nhom.reduce((a, c) => a + c.soTu, 0)
+      soTu: nhom.reduce((a, c) => a + c.soTu, 0),
+      gop: nhom.length
     })
   }
   return ra
 }
 
+// Ngưỡng cảnh bất thường (27 từ ≈ 9 giây):
+//   < 12 từ ≈ dưới 4 giây — ảnh vừa hiện đã đổi, người xem thấy giật.
+//   > 45 từ ≈ trên 15 giây — một ảnh đứng yên quá lâu, người xem chán.
+// Tool đã tự nhập cảnh ngắn và tự tách câu dài; cảnh còn sót lại là chỗ không
+// làm được tự động (câu rất dài không có dấu phẩy/liên từ, hoặc một câu ngắn
+// đứng giữa hai cảnh đã đầy).
+const NGUONG_NGAN = 12
+const NGUONG_DAI = 45
+
 function thongKeCanh(canh, { giayMoiCanh = 9 } = {}) {
   const tong = canh.reduce((a, c) => a + c.soTu, 0)
   const giay = canh.reduce((a, c) => a + c.giayUoc, 0)
+  // Gộp 2–3 cảnh một ảnh thì cảnh dài là CHỦ Ý — không báo "quá dài".
+  const tran = canh.some((c) => c.gop > 1) ? NGUONG_DAI * Math.max(...canh.map((c) => c.gop || 1)) : NGUONG_DAI
+  const ngan = canh.filter((c) => c.soTu < NGUONG_NGAN).map((c) => c.so)
+  const dai = canh.filter((c) => c.soTu > tran).map((c) => c.so)
   return {
     soCanh: canh.length,
     tongTu: tong,
     tuTrungBinh: canh.length ? Math.round(tong / canh.length) : 0,
     tongGiay: Math.round(giay),
     tongPhut: Math.round(giay / 60),
-    canhQuaNgan: canh.filter((c) => c.soTu < 12).length,
-    canhQuaDai: canh.filter((c) => c.soTu > 45).length
+    canhQuaNgan: ngan.length,
+    canhQuaDai: dai.length,
+    soCanhNgan: ngan,
+    soCanhDai: dai,
+    nguongNgan: NGUONG_NGAN,
+    nguongDai: tran
   }
 }
 
@@ -207,7 +285,34 @@ function chiaLo(canh, moiLo = 50) {
   return ra
 }
 
-function taoPromptMoTaCanh(loCanh, { style = MAC_DINH_O.style, khoNhanVat = [], loThu = 1, tongLo = 1 } = {}) {
+// 0.6.0 — STYLE MẪU. Người dùng dán prompt mẫu đã ưng (và/hoặc đính kèm ảnh
+// mẫu trên claude.ai). Khối này đi vào MỌI lô gửi Claude để mọi cảnh viết
+// theo đúng phong cách đó — trước đây không có ô nào nhập style: tool luôn
+// dùng style mặc định "cinematic documentary still" dù người dùng muốn khác.
+function khoiStyleMau({ promptMau = '', coAnhMau = false } = {}) {
+  const mau = String(promptMau || '').trim()
+  if (!mau && !coAnhMau) return ''
+  const dong = ['===== STYLE MẪU — MỌI PROMPT PHẢI THEO ĐÚNG PHONG CÁCH NÀY =====']
+  if (mau) {
+    dong.push(
+      'Prompt mẫu người dùng đã ưng (ảnh sinh ra từ nó đúng ý):',
+      '',
+      mau,
+      '',
+      'Giữ NGUYÊN: phong cách hình ảnh, chất liệu, màu, ánh sáng, góc máy, cách sắp',
+      'xếp các vế, độ dài và lối dùng từ của prompt mẫu. Chỉ thay CHỦ THỂ, HÀNH ĐỘNG',
+      'và BỐI CẢNH cho đúng từng cảnh. Không chép nhân vật/bối cảnh của prompt mẫu',
+      'sang cảnh không có chúng.'
+    )
+  }
+  if (coAnhMau) {
+    dong.push('', 'Ảnh ĐÍNH KÈM trong tin nhắn này là ảnh mẫu về phong cách: bám theo màu,',
+      'ánh sáng, chất liệu và bố cục của ảnh đó.')
+  }
+  return dong.join('\n')
+}
+
+function taoPromptMoTaCanh(loCanh, { style = MAC_DINH_O.style, khoNhanVat = [], loThu = 1, tongLo = 1, promptMau = '', coAnhMau = false } = {}) {
   const khoi = []
 
   khoi.push([
@@ -217,6 +322,9 @@ function taoPromptMoTaCanh(loCanh, { style = MAC_DINH_O.style, khoNhanVat = [], 
     'Với mỗi cảnh dưới đây, mô tả thành hình ảnh cụ thể để đưa cho mô hình sinh ảnh.',
     'Chỉ tả thứ NHÌN THẤY ĐƯỢC. Không tả cảm xúc trừu tượng, không tả điều đang nghĩ.'
   ].join('\n'))
+
+  const style1 = khoiStyleMau({ promptMau, coAnhMau })
+  if (style1) khoi.push(style1 + '\nCác trường lighting / mood / camera phải khớp phong cách mẫu.')
 
   if (khoNhanVat.length) {
     khoi.push([
@@ -255,7 +363,9 @@ function taoPromptMoTaCanhThuong(loCanh, {
   khoNhanVat = [],
   loThu = 1,
   tongLo = 1,
-  amBan = MAC_DINH_O.amBan
+  amBan = MAC_DINH_O.amBan,
+  promptMau = '',
+  coAnhMau = false
 } = {}) {
   const khoi = []
 
@@ -266,6 +376,9 @@ function taoPromptMoTaCanhThuong(loCanh, {
     'Với mỗi cảnh dưới đây, viết MỘT prompt ảnh hoàn chỉnh bằng tiếng Anh.',
     'Chỉ tả thứ NHÌN THẤY ĐƯỢC. Không tả cảm xúc trừu tượng, không tả điều đang nghĩ.'
   ].join('\n'))
+
+  const style2 = khoiStyleMau({ promptMau, coAnhMau })
+  if (style2) khoi.push(style2)
 
   if (khoNhanVat.length) {
     khoi.push([
@@ -488,6 +601,10 @@ module.exports = {
   MAC_DINH_O,
   tachCauGiuDau,
   cheNhoCau,
+  cheTaiLienTu,
+  nhapCanhNgan,
+  NGUONG_NGAN,
+  NGUONG_DAI,
   catCanh,
   gopNhieuCanh,
   thongKeCanh,
@@ -495,6 +612,7 @@ module.exports = {
   ghepPrompt,
   taoTatCaPrompt,
   chiaLo,
+  khoiStyleMau,
   taoPromptMoTaCanh,
   taoPromptMoTaCanhThuong,
   phanTichMoTaCanh,

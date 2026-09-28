@@ -77,7 +77,11 @@ const CAI_DAT_MAC_DINH = {
   footageDungWikimedia: true,
   footageDungLoc: true,
   footageChoCcBySa: false,  // CC BY-SA: điều khoản "chia sẻ tương tự" với video YouTube là vùng xám
-  footageSoUngVien: 6
+  footageSoUngVien: 6,
+
+  // 0.6.0 — Viết kịch bản tự động bằng Claude API (trả tiền riêng theo token)
+  khoaClaude: '',
+  moHinhClaude: 'claude-opus-5-5'
 }
 
 function docJSON(duongDan, macDinh) {

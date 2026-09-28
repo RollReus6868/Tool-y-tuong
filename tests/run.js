@@ -2262,6 +2262,193 @@ async function chay() {
   })
 
   // =========================================================================
+  nhom('39. Xuất Word / txt / md')
+
+  const xuatVB = require('../src/xuat-van-ban')
+  const JSZipT = require('jszip')
+
+  await kiem('.docx hợp lệ: đủ 3 phần, thoát ký tự XML, tiêu đề "#" thành chữ đậm, bỏ ký tự điều khiển', async () => {
+    const buf = await xuatVB.taoDocx('## Phần 1\nA < B & "C"\u0007\n\n---\nDòng cuối có dấu tiếng Việt', { tieuDe: 'Lời thoại' })
+    const zip = await JSZipT.loadAsync(buf)
+    assert.ok(zip.file('[Content_Types].xml') && zip.file('_rels/.rels') && zip.file('word/document.xml'))
+    const xml = await zip.file('word/document.xml').async('string')
+    assert.ok(xml.includes('A &lt; B &amp; &quot;C&quot;'))
+    assert.ok(!xml.includes('\u0007'))
+    assert.ok(xml.includes('<w:b/>') && xml.includes('>Phần 1<') && xml.includes('>Lời thoại<'))
+    assert.ok(xml.includes('Dòng cuối có dấu tiếng Việt'))
+  })
+
+  await kiem('ghi theo đuôi tệp: .txt có BOM, .md giữ nguyên, .docx là zip', async () => {
+    const d = thuMucTam('xuat-vb')
+    await xuatVB.ghiVanBan(path.join(d, 'a.txt'), 'xin chào', { tieuDe: 'T' })
+    await xuatVB.ghiVanBan(path.join(d, 'a.md'), 'xin chào')
+    await xuatVB.ghiVanBan(path.join(d, 'a.docx'), 'xin chào')
+    assert.strictEqual(fs.readFileSync(path.join(d, 'a.txt'), 'utf8'), '﻿T\n\nxin chào')
+    assert.strictEqual(fs.readFileSync(path.join(d, 'a.md'), 'utf8'), 'xin chào')
+    assert.strictEqual(fs.readFileSync(path.join(d, 'a.docx')).slice(0, 2).toString(), 'PK')
+    assert.strictEqual(xuatVB.tenTepAnToan('loi-thoai What: If? <x>. '), 'loi-thoai What If x')
+  })
+
+  // =========================================================================
+  nhom('40. Kịch bản — cách 1 prompt + "tiếp", tách bài dán về')
+
+  await kiem('prompt một lần: dặn viết vào MỘT artifact, dòng "## PHẦN n", dừng chờ "tiếp", báo HẾT', () => {
+    const p = kichBanMod.taoPromptMotLan({ skill: 'SKILL X', loiThoai: 'tư liệu Y', yeuCau: { soTuMucTieu: 11000, soPhan: 8 } })
+    for (const can of ['SKILL X', 'tư liệu Y', 'MỘT artifact', '## PHẦN <số>', '"tiếp"', 'HẾT KỊCH BẢN', 'Phần 8']) assert.ok(p.includes(can), 'thiếu: ' + can)
+  })
+
+  await kiem('tách bài dán: theo SỐ phần, bỏ dàn ý phía trước, bỏ markdown, báo thiếu/trùng', () => {
+    const chu = 'DÀN Ý\n1. abc\n\n## PHẦN 1\nThe **river** rose.\n\n**PHẦN 2**\nSecond part.\n# PHẦN 4\nFourth.\n## PHẦN 2\nSecond part v2.\nHẾT KỊCH BẢN'
+    const r = kichBanMod.tachPhanBanDan(chu)
+    assert.deepStrictEqual(r.phan, ['The river rose.', 'Second part v2.', 'Fourth.'])
+    assert.deepStrictEqual(r.thieu, [3])
+    assert.deepStrictEqual(r.trung, [2])
+    const khong = kichBanMod.tachPhanBanDan('Just one block of text.\n\nAnother paragraph.')
+    assert.strictEqual(khong.soTieuDe, 0)
+    assert.deepStrictEqual(khong.phan, ['Just one block of text.\n\nAnother paragraph.'])
+    // Câu văn có chữ "part" giữa dòng không bị tưởng là tiêu đề.
+    const cau = kichBanMod.tachPhanBanDan('## PHẦN 1\nPart 2 of the story began when the rain stopped and nobody knew why it mattered so much to them all.')
+    assert.strictEqual(cau.phan.length, 1)
+  })
+
+  // =========================================================================
+  nhom('41. Claude API — hợp đồng nguyên văn, lỗi, thử lại, viết tự động')
+
+  const claudeApi = require('../src/claude-api')
+  const { vietTuDong } = require('../src/kich-ban-tu-dong')
+
+  await kiem('yêu cầu gửi đi khớp NGUYÊN VĂN tài liệu Messages API', () => {
+    const { url, tuyChon } = claudeApi.yeuCauClaude({ khoa: 'sk-ant-X', moHinh: 'claude-opus-5-5', prompt: 'Hi', maxTokens: 16000 })
+    assert.strictEqual(url, 'https://api.anthropic.com/v1/messages')
+    assert.deepStrictEqual(tuyChon.headers, { 'x-api-key': 'sk-ant-X', 'anthropic-version': '2023-06-01', 'content-type': 'application/json' })
+    assert.strictEqual(tuyChon.method, 'POST')
+    assert.deepStrictEqual(JSON.parse(tuyChon.body), { model: 'claude-opus-5-5', max_tokens: 16000, messages: [{ role: 'user', content: 'Hi' }] })
+    assert.deepStrictEqual(Object.keys(claudeApi.MO_HINH), ['claude-opus-5-5', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'])
+  })
+
+  await kiem('đọc trả lời: chỉ lấy khối text (bỏ khối thinking), cộng token', () => {
+    const r = claudeApi.docTraLoiClaude({ content: [{ type: 'thinking', thinking: 'bí mật' }, { type: 'text', text: 'Xin ' }, { type: 'text', text: 'chào' }],
+      stop_reason: 'end_turn', usage: { input_tokens: 10, cache_read_input_tokens: 5, output_tokens: 7 } })
+    assert.deepStrictEqual(r, { chu: 'Xin chào', lyDoDung: 'end_turn', tokVao: 15, tokRa: 7 })
+  })
+
+  await kiem('lỗi: 401 khoá sai, hết credit, 429/529 thử lại rồi mới báo', async () => {
+    assert.ok(/Khoá Claude API sai/.test(claudeApi.moTaLoiClaude(401, '{"error":{"type":"authentication_error"}}')))
+    assert.ok(/hết tiền/.test(claudeApi.moTaLoiClaude(400, '{"error":{"type":"invalid_request_error","message":"Your credit balance is too low"}}')))
+    let lan = 0
+    const ngu = async () => {}
+    const fetchGia = async () => {
+      lan++
+      if (lan < 3) return { ok: false, status: 529, text: async () => '{"error":{"type":"overloaded_error"}}', headers: { get: () => null } }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ content: [{ type: 'text', text: 'OK' }], usage: {} }) }
+    }
+    const kq = await claudeApi.taoGoiClaude({ khoa: 'k', fetchHam: fetchGia, ngu })('p')
+    assert.strictEqual(kq.chu, 'OK'); assert.strictEqual(lan, 3)
+    let lan2 = 0
+    const sai = async () => { lan2++; return { ok: false, status: 401, text: async () => '{}', headers: { get: () => null } } }
+    await assert.rejects(claudeApi.taoGoiClaude({ khoa: 'k', fetchHam: sai, ngu })('p'), /sai/)
+    assert.strictEqual(lan2, 1, 'khoá sai thì KHÔNG thử lại')
+  })
+
+  await kiem('ước tính chi phí: Opus đắt gấp đôi Sonnet, có số lượt gọi', () => {
+    const o = claudeApi.uocChiPhi({ moHinh: 'claude-opus-5-5', soTuSkill: 3000, soTuTuLieu: 8000, soTuMucTieu: 11000, soPhan: 8 })
+    const s = claudeApi.uocChiPhi({ moHinh: 'claude-sonnet-5', soTuSkill: 3000, soTuTuLieu: 8000, soTuMucTieu: 11000, soPhan: 8 })
+    assert.strictEqual(o.soLuot, 9)
+    assert.ok(o.usd > 0.3 && o.usd < 3, 'ước tính ' + o.usd)
+    assert.ok(Math.abs(o.usd - 2 * s.usd) < 0.02)
+  })
+
+  await kiem('viết tự động cả chuỗi: dàn ý → 3 phần có sổ chống lặp → gộp; lưu từng phần; bỏ markdown', async () => {
+    const goiDi = []
+    const goi = async (prompt) => {
+      goiDi.push(prompt)
+      if (prompt.includes('CHỈ DÀN Ý')) return { chu: 'PHẦN 1 | Mở | 100\n- a\nPHẦN 2 | Giữa | 100\n- b\nPHẦN 3 | Kết | 100\n- c', tokVao: 100, tokRa: 50, lyDoDung: 'end_turn' }
+      const so = prompt.match(/VIẾT PHẦN (\d+)/)[1]
+      return { chu: `**Part ${so}** the river rose again over the old stone bridge near the mill.`, tokVao: 200, tokRa: 80, lyDoDung: so === '3' ? 'max_tokens' : 'end_turn' }
+    }
+    const daLuu = []
+    const kq = await vietTuDong({ goi, yeuCau: { soTuMucTieu: 300, soPhan: 3 }, luuPhan: (so, chu) => daLuu.push(so) })
+    assert.strictEqual(kq.xong, true)
+    assert.deepStrictEqual(daLuu, [1, 2, 3])
+    assert.strictEqual(goiDi.length, 4)
+    assert.ok(goiDi[2].includes('SỔ CHỐNG LẶP'), 'phần 2 phải kèm sổ chống lặp rút từ phần 1')
+    assert.ok(!kq.kichBan.includes('**'))
+    assert.strictEqual(kq.tokVao, 700)
+    assert.ok(kq.canhBao.some((c) => /Phần 3 bị cắt/.test(c)))
+  })
+
+  await kiem('chạy tiếp: có dàn ý + phần 1 rồi thì chỉ gọi cho phần còn thiếu (không trả tiền hai lần)', async () => {
+    const goiDi = []
+    const goi = async (prompt) => { goiDi.push(prompt); return { chu: 'text ' + goiDi.length, tokVao: 1, tokRa: 1 } }
+    const kq = await vietTuDong({ goi, yeuCau: { soPhan: 2 }, danYCo: 'PHẦN 1 | A | 10\nPHẦN 2 | B | 10', cacPhanCo: ['đã có phần 1'] })
+    assert.strictEqual(goiDi.length, 1)
+    assert.ok(goiDi[0].includes('VIẾT PHẦN 2'))
+    assert.deepStrictEqual(kq.cacPhan, ['đã có phần 1', 'text 1'])
+  })
+
+  await kiem('dừng giữa chừng giữ phần đã viết; dàn ý sai định dạng thì báo rõ', async () => {
+    let huy = false
+    const goi = async (prompt) => {
+      if (prompt.includes('CHỈ DÀN Ý')) return { chu: 'PHẦN 1 | A | 10\nPHẦN 2 | B | 10' }
+      huy = true
+      return { chu: 'phần một' }
+    }
+    const kq = await vietTuDong({ goi, yeuCau: { soPhan: 2 }, daHuy: () => huy })
+    assert.strictEqual(kq.xong, false)
+    assert.deepStrictEqual(kq.cacPhan, ['phần một'])
+    await assert.rejects(vietTuDong({ goi: async () => ({ chu: 'xin lỗi, tôi không hiểu' }), yeuCau: { soPhan: 2 } }), /định dạng/)
+  })
+
+  // =========================================================================
+  nhom('42. Cắt cảnh: nhập cảnh ngắn, tách câu dài ở liên từ, báo SỐ cảnh lệch')
+
+  await kiem('câu 50 từ không dấu phẩy được tách ở liên từ gần giữa', () => {
+    const cau = 'The river rose over the old stone wall and the farmers watched from the ridge while the rain kept falling on the fields that their grandfathers had planted long before the war came to the valley and took the young men away from home.'
+    const ds = promptAnh.cheNhoCau(cau, 40)
+    assert.ok(ds.length >= 2)
+    for (const d of ds) assert.ok(kiemDuyet.demTu(d) <= 40 && kiemDuyet.demTu(d) >= 6)
+    assert.strictEqual(ds.join(' '), cau, 'không được mất chữ')
+  })
+
+  await kiem('cảnh 2 từ ("He waited.") được nhập vào cảnh bên cạnh, số cảnh vẫn liên tục từ 1', () => {
+    const chu = 'He waited. ' + 'The storm moved across the plains and the town prepared for the worst night of the year, with every shutter closed tight. '.repeat(3)
+    const canh = promptAnh.catCanh(chu, { tuMoiCanh: 27 })
+    assert.ok(canh.every((c) => c.soTu >= 12), JSON.stringify(canh.map((c) => c.soTu)))
+    assert.deepStrictEqual(canh.map((c) => c.so), canh.map((_, i) => i + 1))
+    assert.ok(canh[0].chu.startsWith('He waited.'))
+  })
+
+  await kiem('thống kê trả về SỐ cảnh lệch; gộp 2 cảnh/ảnh thì cảnh dài không bị báo', () => {
+    const tk = promptAnh.thongKeCanh([{ so: 1, soTu: 5, giayUoc: 2 }, { so: 2, soTu: 27, giayUoc: 9 }, { so: 3, soTu: 60, giayUoc: 20 }])
+    assert.deepStrictEqual(tk.soCanhNgan, [1])
+    assert.deepStrictEqual(tk.soCanhDai, [3])
+    const tk2 = promptAnh.thongKeCanh([{ so: 1, soTu: 60, giayUoc: 20, gop: 2 }])
+    assert.deepStrictEqual(tk2.soCanhDai, [])
+  })
+
+  // =========================================================================
+  nhom('43. Style mẫu đi vào prompt gửi Claude')
+
+  await kiem('prompt mẫu + ảnh mẫu có mặt ở CẢ hai kiểu lô (JSON và prompt thường)', () => {
+    const canh = promptAnh.catCanh('An old shepherd walks up the hill at dusk with his flock behind him.', { tuMoiCanh: 27 })
+    const mau = 'Oil painting, 19th-century biblical illustration, warm rim light'
+    for (const ham of [promptAnh.taoPromptMoTaCanh, promptAnh.taoPromptMoTaCanhThuong]) {
+      const p = ham(canh, { style: 'S', promptMau: mau, coAnhMau: true })
+      assert.ok(p.includes(mau), ham.name)
+      assert.ok(p.includes('STYLE MẪU'), ham.name)
+      assert.ok(/ĐÍNH KÈM/.test(p), ham.name)
+    }
+    assert.ok(!promptAnh.taoPromptMoTaCanhThuong(canh, {}).includes('STYLE MẪU'), 'không có mẫu thì không chèn khối rỗng')
+  })
+
+  await kiem('mã nguồn: màn Prompt ảnh có ô nhập style (trước 0.6.0 không có ô nào → luôn style mặc định)', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8')
+    for (const id of ['o-prompt-mau', 'o-style-chung', 'o-co-anh-mau', 'nut-luu-style']) assert.ok(html.includes(`id="${id}"`), id)
+    const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8')
+    assert.ok(/promptMau: o\.mau/.test(main), 'prompt mẫu phải được truyền vào lô gửi Claude')
+  })
+
+  // =========================================================================
   console.log('\n' + '─'.repeat(58))
   console.log(`TẦNG 1: ${soQua} qua, ${soTruot.length} truột`)
   if (soTruot.length) {

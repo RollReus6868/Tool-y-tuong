@@ -11,6 +11,55 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.6.0 — lời thoại hiện đủ + xuất Word, viết kịch bản nhanh hơn, style mẫu cho prompt ảnh
+
+**Lời thoại theo dự án không có chỗ hiện kết quả.** Chế độ dự án (và nút "Lấy lời
+thoại ngay" của khối Video đã chọn) chỉ hiện 400 ký tự đầu rồi "…" — không đọc
+được, không chép được. Nay mỗi video có ô toàn văn (sửa được) + nút **Chép** /
+**Xuất Word / txt…**, cả loạt có **Chép tất cả**, **Xuất tất cả**, **Dùng làm bản
+gốc ở Kiểm duyệt**; huy hiệu xanh "✔ Lấy được 2/3 video", video lỗi thẻ đỏ kèm lý
+do; màn tự cuộn tới kết quả. Xuất `.docx` dựng bằng JSZip sẵn có (không thêm thư
+viện), `.txt` có BOM để Notepad không vỡ dấu, `.md`.
+
+**Kịch bản — ba cách, chọn một:**
+
+1. **Tự động bằng Claude API**: bấm một nút, tool xin dàn ý rồi viết lần lượt
+   từng phần (vẫn kèm sổ chống lặp), có thanh tiến độ và số tiền đã dùng. Mỗi
+   phần xong **lưu ngay** — mất mạng giữa chừng bấm lại là chạy tiếp, không trả
+   tiền viết lại. Hiện ước tính chi phí trước khi chạy (Opus 5.5 ≈ $0,6–1,2 một
+   kịch bản 11.000 từ). Khoá API tính tiền riêng, khác gói claude.ai.
+2. **Một prompt trên claude.ai** (miễn phí): chép MỘT prompt, Claude viết cả bài
+   vào một artifact, người dùng chỉ gõ "tiếp"; hết bài bấm Copy của artifact một
+   lần, dán về. Tool tự tách theo dòng `## PHẦN n`, bỏ định dạng markdown (TTS sẽ
+   đọc cả dấu `*`), báo phần thiếu/trùng, lưu phiên bản.
+3. **Từng phần** (cách cũ) — thu gọn lại, vẫn dùng được.
+
+Khối mới **Kịch bản hiện tại**: hiện bản mới nhất của dự án, sửa được, **Chép**,
+**Xuất Word / txt…**, **Lưu thành bản mới**, đẩy sang Kiểm duyệt / Prompt ảnh.
+
+**Prompt ảnh — Bước 2 chưa từng "chuẩn".** Người dùng hiểu Bước 2 là chỗ nhập
+style mẫu để bước sau làm theo. Thực tế trước 0.6.0 **không có ô nào** để nhập
+style: `oPrompt` chỉ đọc từ tệp cài đặt mà giao diện không bao giờ ghi, nên mọi
+prompt luôn dùng style mặc định "cinematic documentary still". Nay:
+
+- **Bước 2 — Style mẫu** (mới): ô **Prompt mẫu** (dán prompt đã ưng), **Style
+  chung** (chèn đầu mọi prompt), **Loại trừ**, tick **"Tôi sẽ đính kèm ảnh mẫu"**,
+  tuỳ chỉnh góc máy/ánh sáng/không khí/đuôi, nút **Xem thử prompt cảnh 1**.
+- Prompt mẫu + lời nhắc ảnh mẫu đi vào **mọi lô gửi Claude** (cả kiểu JSON lẫn
+  prompt thường) kèm lệnh giữ nguyên phong cách, chỉ thay chủ thể/bối cảnh.
+- Nói thẳng trên giao diện: prompt mẫu chỉ có tác dụng khi nhờ Claude (Bước 3);
+  không nhờ Claude thì chỉ Style chung được ghép.
+
+**Cắt cảnh — "quá ngắn / quá dài" là gì, và dấu hiệu xong.** Ngưỡng: dưới 12 từ
+(≈ dưới 4 giây, ảnh vừa hiện đã đổi) và trên 45 từ (≈ trên 15 giây, một ảnh đứng
+quá lâu). Nguyên nhân cũ: câu ngắn kẹp giữa hai cảnh đầy bị để thành cảnh riêng,
+và câu dài không có dấu phẩy không cắt được. Nay tool **tự nhập cảnh ngắn** vào
+cảnh bên cạnh (ưu tiên cảnh ngắn hơn, không vượt trần) và **tự tách câu dài ở
+liên từ** gần giữa câu (and, but, while…). Sót lại thì báo **đúng số cảnh**, tô
+vàng dòng đó trong bảng và giải thích cách sửa. Huy hiệu: xanh "✔ Cắt cảnh xong",
+vàng "✔ Cắt xong — có cảnh cần xem", đỏ "✘ Cắt cảnh không được". Gộp 2–3 cảnh
+một ảnh thì cảnh dài là chủ ý, không báo.
+
 ### 0.5.1 — sửa lỗi lấy phụ đề: báo "không có phụ đề" với MỌI video
 
 **Nguyên nhân thật.** Lệnh gọi yt-dlp có `--print` (để lấy tiêu đề, tên kênh), mà
@@ -446,7 +495,7 @@ mới** trong app tự thấy bản mới.
 
 | Tầng | Lệnh | Bắt được gì |
 |---|---|---|
-| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ**, **tham số yt-dlp lấy phụ đề** (197 ca) |
+| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ**, **tham số yt-dlp lấy phụ đề**, **xuất .docx, tách kịch bản dán về, Claude API (nguyên văn, thử lại, chạy tiếp), cắt cảnh, style mẫu** (213 ca) |
 | 2. Giao diện | `YT_SMOKE=1 npx electron --no-sandbox .` | thiếu màn, thiếu phần tử, **thiếu khoá cài đặt**, lớp phủ che giao diện, **thumbnail và ảnh xem trước footage có vẽ ra không**; nạp dữ liệu mẫu rồi chụp ảnh từng màn vào `shots/` |
 
 Tầng 2 chụp ảnh xong **phải mở ảnh ra xem bằng mắt**. Nút bị cắt, chữ vỡ dấu,
@@ -470,6 +519,11 @@ triển không có. Không được hiểu là "đã chạy tốt":
 - **Footage: gọi Pexels / Pixabay / Wikimedia / Library of Congress thật** và tải
   video thật. URL và cách đọc kết quả đối chiếu tài liệu chính thức (9/2026), nhưng
   máy phát triển bị chặn ra các trang này — cấu trúc trả về thật có thể lệch
+- **Claude API thật** (viết tự động): hợp đồng đối chiếu tài liệu 9/2026 và chạy
+  cả chuỗi bằng hàm giả, chưa gọi bằng khoá thật; giá ước tính có thể lệch
+- Artifact trên **claude.ai thật** giữ đúng dòng `## PHẦN n` qua 8 lượt "tiếp"
+  (Claude có thể đặt tiêu đề khác — tool báo phần thiếu/trùng)
+- Tệp `.docx` mở bằng **Word thật** (đã giải nén kiểm cấu trúc, chưa mở trong Word)
 - Chất lượng **lọc sơ** và **từ khóa Claude** trên kịch bản thật của kênh (mới thử
   bằng câu mẫu)
 - Flow thật nhận chuỗi số và đặt tên đúng số gốc (đã đối chiếu mã nguồn Flow 2.8.6,

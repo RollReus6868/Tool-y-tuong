@@ -35,6 +35,9 @@ const phanLoaiFt = require('./src/footage-phan-loai')
 const nguonFt = require('./src/footage-nguon')
 const taiFt = require('./src/footage-tai')
 const { taiVeTep } = require('./src/goi-mang')
+const xuatVanBan = require('./src/xuat-van-ban')
+const claudeApi = require('./src/claude-api')
+const { vietTuDong } = require('./src/kich-ban-tu-dong')
 
 const LA_SMOKE = !!process.env.YT_SMOKE
 let cuaSo = null
@@ -668,6 +671,36 @@ function dangKyIPC() {
     return { ok: ketQua.length > 0, ketQua, loiVideo }
   })
 
+  // Xuất lời thoại / kịch bản ra Word, txt hoặc md — người dùng chọn kiểu tệp
+  // ngay trong hộp thoại Lưu (mặc định Word).
+  ipcMain.handle('tep:xuat', async (_su, { chu, tenGoiY, tieuDe, kieu }) => {
+    if (!String(chu || '').trim()) return { ok: false, loi: 'Chưa có nội dung để xuất.' }
+    const cacKieu = [
+      { name: 'Word (.docx)', extensions: ['docx'] },
+      { name: 'Văn bản (.txt)', extensions: ['txt'] },
+      { name: 'Markdown (.md)', extensions: ['md'] }
+    ]
+    const dau = cacKieu.findIndex((k) => k.extensions[0] === kieu)
+    if (dau > 0) cacKieu.unshift(cacKieu.splice(dau, 1)[0])
+    const ten = xuatVanBan.tenTepAnToan(tenGoiY) + '.' + cacKieu[0].extensions[0]
+    const { canceled, filePath } = await dialog.showSaveDialog(cuaSo, {
+      title: 'Xuất ra tệp',
+      defaultPath: path.join(app.getPath('downloads'), ten),
+      filters: cacKieu
+    })
+    if (canceled || !filePath) return { ok: false, huy: true }
+    // Người dùng xoá đuôi trong ô tên tệp thì Windows không tự thêm lại — lấy
+    // đuôi của loại đang chọn đầu danh sách.
+    const dich = path.extname(filePath) ? filePath : filePath + '.' + cacKieu[0].extensions[0]
+    try {
+      await xuatVanBan.ghiVanBan(dich, chu, { tieuDe })
+    } catch (e) {
+      return { ok: false, loi: `Không ghi được ${dich}: ${e.message}. Tệp đang mở trong Word thì đóng lại rồi thử lại.` }
+    }
+    nhatKy.tin(`Đã xuất: ${dich}`)
+    return { ok: true, duongDan: dich }
+  })
+
   ipcMain.handle('tep:luu', async (_su, { chu, tenGoiY }) => {
     const { canceled, filePath } = await dialog.showSaveDialog(cuaSo, {
       title: 'Lưu thành tệp',
@@ -840,6 +873,139 @@ function dangKyIPC() {
     }
   })
 
+  // --- Kịch bản 0.6.0: cách nhanh (1 prompt) và tự động (Claude API) --------
+  function nguyenLieuKichBan(duAnMa, skillId, yeuCau = {}) {
+    const caiDat = kho.docCaiDat()
+    const skill = (caiDat.khoSkill || []).find((s) => s.id === skillId)
+    return {
+      caiDat,
+      skill: skill ? skill.noiDung : '',
+      loiThoai: duAnMa ? khoDuAn.docLoiThoai(duAnMa) : '',
+      yeuCau: { soTuMucTieu: caiDat.soTuMucTieu, soPhan: caiDat.soPhanKichBan, ...yeuCau }
+    }
+  }
+
+  function thongKeKichBan(chu) {
+    const caiDat = kho.docCaiDat()
+    return kichBan.phanTichKichBan(chu, {
+      tuMoiPhut: caiDat.tuMoiPhut, tuMoiCanh: caiDat.tuMoiCanh, soTuMucTieu: caiDat.soTuMucTieu
+    })
+  }
+
+  ipcMain.handle('kichban:prompt-mot-lan', (_su, { duAnMa, skillId, yeuCau }) => {
+    const nl = nguyenLieuKichBan(duAnMa, skillId, yeuCau)
+    return {
+      ok: true,
+      prompt: kichBan.taoPromptMotLan(nl),
+      coLoiThoai: !!nl.loiThoai.trim(),
+      coSkill: !!nl.skill.trim()
+    }
+  })
+
+  // Nhận toàn bộ artifact dán về: tách phần, lưu các phần + một phiên bản kịch bản.
+  ipcMain.handle('kichban:nhan-ban-dan', (_su, { duAnMa, chu }) => {
+    const t = kichBan.tachPhanBanDan(chu)
+    if (!t.phan.length) return { ok: false, loi: 'Ô trống — dán toàn bộ nội dung artifact "Kịch bản" từ claude.ai vào.' }
+    const gop = kichBan.gopKichBan(t.phan)
+    let luu = null
+    if (duAnMa) {
+      khoDuAn.ghiCacPhan(duAnMa, t.phan)
+      luu = khoDuAn.ghiKichBan(duAnMa, gop)
+      nhatKy.tin(`Nhận kịch bản dán về (${t.phan.length} phần) → ${luu.ten}`)
+    }
+    return { ok: true, chu: gop, soPhan: t.phan.length, soTieuDe: t.soTieuDe, thieu: t.thieu, trung: t.trung, luu, thongKe: thongKeKichBan(gop) }
+  })
+
+  ipcMain.handle('kichban:uoc-api', (_su, { duAnMa, skillId }) => {
+    const nl = nguyenLieuKichBan(duAnMa, skillId)
+    const moHinh = nl.caiDat.moHinhClaude || claudeApi.MO_HINH_MAC_DINH
+    const dem = (x) => (String(x || '').match(/\S+/g) || []).length
+    const cacPhan = duAnMa ? khoDuAn.docCacPhan(duAnMa) : []
+    const danY = duAnMa ? khoDuAn.docDanY(duAnMa) : { phan: [] }
+    return {
+      coKhoa: !!String(nl.caiDat.khoaClaude || '').trim(),
+      moHinh,
+      tenMoHinh: (claudeApi.MO_HINH[moHinh] || {}).ten || moHinh,
+      daCoPhan: cacPhan.filter((x) => x && String(x).trim()).length,
+      daCoDanY: (danY.phan || []).length,
+      ...claudeApi.uocChiPhi({
+        moHinh, soTuSkill: dem(nl.skill), soTuTuLieu: dem(nl.loiThoai),
+        soTuMucTieu: Number(nl.yeuCau.soTuMucTieu) || 11000, soPhan: Number(nl.yeuCau.soPhan) || 8
+      })
+    }
+  })
+
+  let dangVietTuDong = false
+  let huyVietTuDong = false
+  ipcMain.handle('kichban:dung', () => { huyVietTuDong = true; return { ok: true } })
+
+  ipcMain.handle('kichban:tu-dong', async (_su, { duAnMa, skillId, yeuCau, lamLai }) => {
+    if (dangVietTuDong) return { ok: false, loi: 'Đang viết rồi — chờ xong hoặc bấm Dừng.' }
+    if (!duAnMa) return { ok: false, loi: 'Chọn (hoặc tạo) dự án trước — mỗi phần viết xong được lưu vào dự án để mất mạng giữa chừng không phải trả tiền viết lại.' }
+    const nl = nguyenLieuKichBan(duAnMa, skillId, yeuCau)
+    const khoa = String(nl.caiDat.khoaClaude || '').trim()
+    if (!khoa) return { ok: false, loi: 'Chưa có khoá Claude API. Vào Cài đặt → Claude API (xem Hướng dẫn cách lấy khoá).' }
+    const moHinh = nl.caiDat.moHinhClaude || claudeApi.MO_HINH_MAC_DINH
+
+    // Làm lại từ đầu: xoá các phần đang viết dở (các PHIÊN BẢN kịch bản cũ vẫn giữ nguyên).
+    if (lamLai) {
+      khoDuAn.ghiCacPhan(duAnMa, [])
+      khoDuAn.ghiDanY(duAnMa, '', [])
+    }
+    const danYCo = khoDuAn.docDanY(duAnMa).chuTho || ''
+    const cacPhanCo = khoDuAn.docCacPhan(duAnMa)
+
+    dangVietTuDong = true
+    huyVietTuDong = false
+    const batDau = Date.now()
+    try {
+      const kq = await vietTuDong({
+        goi: claudeApi.taoGoiClaude({ khoa, moHinh }),
+        skill: nl.skill,
+        loiThoai: nl.loiThoai,
+        yeuCau: nl.yeuCau,
+        danYCo,
+        cacPhanCo,
+        luuDanY: (chu, phan) => khoDuAn.ghiDanY(duAnMa, chu, phan),
+        luuPhan: (so, chu) => {
+          const ds = khoDuAn.docCacPhan(duAnMa)
+          ds[so - 1] = chu
+          khoDuAn.ghiCacPhan(duAnMa, ds)
+          nhatKy.tin(`Claude API: xong phần ${so} (${(chu.match(/\S+/g) || []).length} từ)`)
+        },
+        baoTienDo: (t) => baoTienDo({
+          ...t, khu: 'kichban',
+          chiTiet: `${t.chiTiet ? t.chiTiet + ' · ' : ''}~$${claudeApi.chiPhiThat(t.tokVao, t.tokRa, moHinh)} đã dùng`
+        }),
+        daHuy: () => huyVietTuDong
+      })
+      const tien = claudeApi.chiPhiThat(kq.tokVao, kq.tokRa, moHinh)
+      if (!kq.xong) {
+        baoTienDo({ phanTram: 100, viec: 'Đã dừng viết', chiTiet: `giữ ${kq.cacPhan.filter(Boolean).length} phần đã viết · ~$${tien}`, trangThai: 'loi', khu: 'kichban' })
+        return { ok: false, dung: true, loi: 'Đã dừng. Các phần đã viết được giữ — bấm "Viết tự động" để chạy tiếp.', tien }
+      }
+      const luu = khoDuAn.ghiKichBan(duAnMa, kq.kichBan)
+      const phut = Math.round((Date.now() - batDau) / 6000) / 10
+      nhatKy.tin(`Claude API viết xong kịch bản → ${luu.ten} · ${kq.tokVao} token vào, ${kq.tokRa} token ra · ~$${tien} · ${phut} phút`)
+      for (const c of kq.canhBao) nhatKy.canhBao('Kịch bản: ' + c)
+      baoTienDo({ phanTram: 100, viec: 'Viết xong kịch bản', chiTiet: `${luu.ten} · ~$${tien}`, trangThai: 'xong', khu: 'kichban' })
+      return { ok: true, chu: kq.kichBan, luu, tien, canhBao: kq.canhBao, soPhan: kq.cacPhan.filter(Boolean).length, thongKe: thongKeKichBan(kq.kichBan) }
+    } catch (e) {
+      nhatKy.loi('Claude API: ' + e.message)
+      baoTienDo({ phanTram: 100, viec: 'Viết tự động lỗi', chiTiet: e.message, soLoi: 1, trangThai: 'loi', khu: 'kichban' })
+      return { ok: false, loi: e.message + ' Các phần đã viết xong vẫn được giữ — bấm lại để chạy tiếp.' }
+    } finally {
+      dangVietTuDong = false
+    }
+  })
+
+  ipcMain.handle('kichban:doc-moi-nhat', (_su, { duAnMa }) => {
+    if (!duAnMa) return { ok: true, chu: '', ten: '' }
+    const cac = khoDuAn.cacBanKichBan(duAnMa)
+    const chu = khoDuAn.docKichBan(duAnMa)
+    return { ok: true, chu, ten: cac[cac.length - 1] || '', soBan: cac.length, thongKe: chu ? thongKeKichBan(chu) : null }
+  })
+
   ipcMain.handle('kichban:luu-truc-tiep', (_su, { duAnMa, chu }) => {
     if (!chu || !chu.trim()) return { ok: false, loi: 'Chưa có nội dung.' }
     const luu = khoDuAn.ghiKichBan(duAnMa, chu)
@@ -927,8 +1093,12 @@ function dangKyIPC() {
     const bo = new Set(boSo || [])
     const lo = promptAnh.chiaLo((canh || []).filter((c) => !bo.has(c.so)), moiLo || 50)
     const i = Math.min(Math.max(1, loThu || 1), lo.length) - 1
+    const o = caiDat.oPrompt || {}
     const tuyChon = {
-      style: (caiDat.oPrompt && caiDat.oPrompt.style) || promptAnh.MAC_DINH_O.style,
+      style: o.style || promptAnh.MAC_DINH_O.style,
+      amBan: o.amBan || promptAnh.MAC_DINH_O.amBan,
+      promptMau: o.mau || '',
+      coAnhMau: !!o.coAnhMau,
       khoNhanVat: caiDat.khoNhanVat || [],
       loThu: i + 1,
       tongLo: lo.length
@@ -1296,6 +1466,37 @@ function dangKyIPC() {
     return { ok: true, kiem: kiemDuThuMuc(thuMuc, soCanh) }
   })
 
+  // --- Style mẫu của prompt ảnh (0.6.0) ------------------------------------
+  // Trước 0.6.0 KHÔNG có ô nào trên giao diện để nhập style: oPrompt luôn rỗng
+  // → mọi prompt dùng style mặc định, dù người dùng muốn phong cách khác.
+  const KHOA_STYLE = ['mau', 'style', 'camera', 'anhSang', 'khongKhi', 'duoi', 'amBan', 'coAnhMau']
+  ipcMain.handle('promptanh:doc-style', () => {
+    const caiDat = kho.docCaiDat()
+    return { o: caiDat.oPrompt || {}, macDinh: promptAnh.MAC_DINH_O }
+  })
+  ipcMain.handle('promptanh:luu-style', (_su, { o }) => {
+    const caiDat = kho.docCaiDat()
+    const sach = {}
+    for (const k of KHOA_STYLE) {
+      if (k === 'coAnhMau') { sach[k] = !!(o && o[k]); continue }
+      const v = String((o && o[k]) || '').replace(/\s+/g, ' ').trim()
+      if (v) sach[k] = k === 'mau' ? String(o[k]).trim() : v
+    }
+    kho.ghiCaiDat({ ...caiDat, oPrompt: sach })
+    return { ok: true, o: sach }
+  })
+  // Xem thử prompt của cảnh đầu với style đang lưu (không cần Claude).
+  ipcMain.handle('promptanh:xem-thu', (_su, { canh }) => {
+    const caiDat = kho.docCaiDat()
+    const c = (canh && canh[0]) || { so: 1, ten: '001', chu: 'An old farmer stands at the edge of a flooded field at dawn.' }
+    return promptAnh.ghepPrompt(c, {
+      template: caiDat.templatePrompt || promptAnh.TEMPLATE_MAC_DINH,
+      o: caiDat.oPrompt || {},
+      khoNhanVat: caiDat.khoNhanVat || [],
+      khoBoiCanh: caiDat.khoBoiCanh || []
+    })
+  })
+
   // --- Kho nhân vật / bối cảnh ----------------------------------------------
   ipcMain.handle('kho:ghi', (_su, { loai, danhSach }) => {
     const caiDat = kho.docCaiDat()
@@ -1494,7 +1695,13 @@ async function chaySmoke() {
     ['cai-dat', '[data-khoa="subToiThieu"]', 'cai-dat-kenh-my'],
     ['footage', '#bang-footage', 'footage-bang-duyet'],
     ['footage', '#nut-gom-flow', 'footage-gom-kiem'],
-    ['cai-dat', '[data-khoa="khoaPexels"]', 'cai-dat-footage']
+    ['cai-dat', '[data-khoa="khoaPexels"]', 'cai-dat-footage'],
+    ['loi-thoai', '#the-ket-qua-loi-thoai', 'loi-thoai-ket-qua'],
+    ['kich-ban', '#nut-viet-tu-dong', 'kich-ban-cach-1-2'],
+    ['kich-ban', '#the-kich-ban-hien-tai', 'kich-ban-hien-tai'],
+    ['prompt-anh', '#o-prompt-mau', 'prompt-anh-style-mau'],
+    ['prompt-anh', '#thong-ke-canh', 'prompt-anh-cat-canh'],
+    ['cai-dat', '[data-khoa="khoaClaude"]', 'cai-dat-claude-api']
   ]
   for (const [man, chon, tenAnh] of khoiDuoiTamNhin) {
     await cuaSo.webContents.executeJavaScript(`window.smokeMoMan('${man}')\n;undefined;`).catch(() => {})
@@ -1538,7 +1745,13 @@ async function chaySmoke() {
     '#man-footage', '#nut-chon-thu-muc-dung', '#nut-cat-canh-ft', '#nut-xuat-canh-xlsx', '#nut-loc-so',
     '#nut-prompt-phan-loai', '#o-tra-loi-phan-loai', '#nut-doc-phan-loai', '#nut-tim-tai-ft', '#nut-dung-ft',
     '#bang-footage', '#bang-footage .the-ung-vien img', '#nut-xuat-loc', '#o-chuoi-so-flow', '#nut-gom-flow', '#nut-kiem-du',
-    '#o-bo-canh-footage', '[data-khoa="khoaPexels"]', '[data-khoa="khoaPixabay"]'
+    '#o-bo-canh-footage', '[data-khoa="khoaPexels"]', '[data-khoa="khoaPixabay"]',
+    // 0.6.0: lời thoại hiện đủ + xuất Word, ba cách viết kịch bản, style mẫu, trạng thái cắt cảnh
+    '#danh-sach-loi-thoai .o-loi-thoai-video', '#danh-sach-loi-thoai .nut-xuat-mot', '#nut-xuat-loi-thoai-gop', '#nut-chep-loi-thoai-gop',
+    '#nut-viet-tu-dong', '#nut-dung-viet', '#nut-prompt-mot-lan', '#o-ban-dan', '#nut-nhan-ban-dan', '#chi-tiet-tung-phan',
+    '#o-kich-ban-hien-tai', '#nut-xuat-kich-ban', '#nut-luu-ban-moi',
+    '#o-prompt-mau', '#o-style-chung', '#o-co-anh-mau', '#nut-luu-style', '#nut-xem-thu-style',
+    '#thong-ke-canh .huy-hieu-canh-bao', '[data-khoa="khoaClaude"]', '[data-khoa="moHinhClaude"]'
   ]
   const thieuPhanTu = await cuaSo.webContents.executeJavaScript(`
     (function () {

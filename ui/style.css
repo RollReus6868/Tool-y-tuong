@@ -525,3 +525,23 @@ tbody td { padding: 8px 8px; }
 .the-ung-vien span { font-size: 10.5px; color: var(--chu-mo); padding: 0 4px 3px; }
 .the-ung-vien:hover { border-color: var(--cam); }
 #ket-qua-kiem-du > div { margin: 4px 0; }
+
+/* ---------- 0.6.0 ---------- */
+.huy-hieu-xong { display: inline-block; background: var(--ngoc); color: #06231f; font-weight: 800; border-radius: 6px; padding: 3px 9px; }
+.huy-hieu-loi { display: inline-block; background: var(--do); color: #fff; font-weight: 800; border-radius: 6px; padding: 3px 9px; }
+.huy-hieu-canh-bao { display: inline-block; background: var(--vang); color: #2a2100; font-weight: 800; border-radius: 6px; padding: 3px 9px; }
+.o-loi-thoai-video { margin-top: 8px; font-size: 12.5px; line-height: 1.55; }
+#bang-canh tr.dong-lech td { background: rgba(255, 204, 51, .09); }
+#bang-canh tr.dong-lech td:first-child { box-shadow: inset 3px 0 0 var(--vang); }
+#thong-ke-canh > div { margin-top: 6px; }
+.chi-tiet-nho { margin-top: 10px; }
+.chi-tiet-nho summary { cursor: pointer; }
+#xem-thu-style { white-space: pre-wrap; margin-top: 10px; }
+details.the > summary { cursor: pointer; }
+details.the[open] > summary { margin-bottom: 10px; }
+details.the > summary { list-style: none; }
+details.the > summary::-webkit-details-marker { display: none; }
+details.the > summary::before { content: '▸  '; color: var(--cam); }
+details.the[open] > summary::before { content: '▾  '; }
+details.the > summary::after { content: '  (bấm để mở)'; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--chu-mo); }
+details.the[open] > summary::after { content: ''; }
