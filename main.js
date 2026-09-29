@@ -36,6 +36,7 @@ const nguonFt = require('./src/footage-nguon')
 const taiFt = require('./src/footage-tai')
 const { taiVeTep } = require('./src/goi-mang')
 const xuatVanBan = require('./src/xuat-van-ban')
+const promptJson = require('./src/prompt-json')
 const claudeApi = require('./src/claude-api')
 const { vietTuDong } = require('./src/kich-ban-tu-dong')
 
@@ -1088,6 +1089,15 @@ function dangKyIPC() {
 
   // boSo: số cảnh đã có footage — không xin Claude mô tả nữa (đỡ lượt dán).
   // Số trong ngoặc vuông vẫn là SỐ GỐC nên câu trả lời ghép đúng chỗ.
+  // Mẫu JSON đang lưu: { la: true, mau } nếu là JSON hợp lệ; { la: false, loi }
+  // nếu TRÔNG như JSON mà hỏng (báo rõ, đừng lặng lẽ coi là chữ thường).
+  function mauJsonHienTai(caiDat) {
+    const chu = ((caiDat.oPrompt || {}).mau) || ''
+    if (!promptJson.trongNhuJson(chu)) return { la: false }
+    const kq = promptJson.docMauJson(chu)
+    return kq.ok ? { la: true, mau: kq.mau } : { la: false, loi: kq.loi }
+  }
+
   ipcMain.handle('promptanh:prompt-mo-ta', (_su, { canh, loThu, moiLo, kieu, boSo }) => {
     const caiDat = kho.docCaiDat()
     const bo = new Set(boSo || [])
@@ -1103,6 +1113,18 @@ function dangKyIPC() {
       loThu: i + 1,
       tongLo: lo.length
     }
+    const mj = mauJsonHienTai(caiDat)
+    if (mj.loi) return { ok: false, loi: mj.loi, tongLo: lo.length, loThu: i + 1, soCanhTrongLo: 0, prompt: '' }
+    if (mj.la) {
+      return {
+        ok: true,
+        kieu: 'json-mau',
+        tongLo: lo.length,
+        loThu: i + 1,
+        soCanhTrongLo: lo[i] ? lo[i].length : 0,
+        prompt: lo[i] ? promptJson.taoPromptJsonTheoMau(lo[i], mj.mau, tuyChon) : ''
+      }
+    }
     const ham = kieu === 'thuong' ? promptAnh.taoPromptMoTaCanhThuong : promptAnh.taoPromptMoTaCanh
     return {
       ok: true,
@@ -1115,10 +1137,42 @@ function dangKyIPC() {
   })
 
   // Tự nhận dạng JSON hay prompt thường — người dùng khỏi phải nhớ đã xin kiểu nào.
-  ipcMain.handle('promptanh:doc-mo-ta', (_su, { chu }) => promptAnh.phanTichTraVe(chu))
+  ipcMain.handle('promptanh:doc-mo-ta', (_su, { chu }) => {
+    const mj = mauJsonHienTai(kho.docCaiDat())
+    if (mj.la) {
+      const kq = promptJson.docTraLoiJson(chu, mj.mau)
+      // Dán nhầm câu trả lời kiểu cũ (mảng mô tả có "so") thì vẫn nhận.
+      if (kq.loi) {
+        const cu = promptAnh.phanTichTraVe(chu)
+        if (!cu.loi && cu.kieu === 'json') return cu
+      }
+      return {
+        kieu: 'json-mau', prompt: kq.prompt, soDoc: kq.soDoc, loi: kq.loi,
+        canhBao: kq.loiCanh.length ? `${kq.loiCanh.length} cảnh có vấn đề: ${kq.loiCanh.slice(0, 4).join(' · ')}` : null
+      }
+    }
+    return promptAnh.phanTichTraVe(chu)
+  })
 
   ipcMain.handle('promptanh:tao', (_su, { canh, moTaTheoCanh, promptThang }) => {
     const caiDat = kho.docCaiDat()
+    const mj = mauJsonHienTai(caiDat)
+    if (mj.loi) return { ok: false, loi: mj.loi }
+    if (mj.la) {
+      const cacPrompt = promptAnh.taoTatCaPromptJson(canh, mj.mau, {
+        khoNhanVat: caiDat.khoNhanVat || [],
+        khoBoiCanh: caiDat.khoBoiCanh || [],
+        moTaTheoCanh: moTaTheoCanh || {},
+        promptThang: promptThang || {}
+      })
+      return {
+        ok: true,
+        cacPrompt,
+        dangJson: true,
+        kiemTra: promptAnh.kiemTraLienTuc(cacPrompt),
+        soNguyenVan: cacPrompt.filter((p) => p.dungNguyenVan).length
+      }
+    }
     const cacPrompt = promptAnh.taoTatCaPromptHonHop(canh, {
       template: caiDat.templatePrompt || promptAnh.TEMPLATE_MAC_DINH,
       o: caiDat.oPrompt || {},
@@ -1472,7 +1526,8 @@ function dangKyIPC() {
   const KHOA_STYLE = ['mau', 'style', 'camera', 'anhSang', 'khongKhi', 'duoi', 'amBan', 'coAnhMau']
   ipcMain.handle('promptanh:doc-style', () => {
     const caiDat = kho.docCaiDat()
-    return { o: caiDat.oPrompt || {}, macDinh: promptAnh.MAC_DINH_O }
+    const o = caiDat.oPrompt || {}
+    return { o, macDinh: promptAnh.MAC_DINH_O, json: moTaMauJson(o.mau) }
   })
   ipcMain.handle('promptanh:luu-style', (_su, { o }) => {
     const caiDat = kho.docCaiDat()
@@ -1483,12 +1538,31 @@ function dangKyIPC() {
       if (v) sach[k] = k === 'mau' ? String(o[k]).trim() : v
     }
     kho.ghiCaiDat({ ...caiDat, oPrompt: sach })
-    return { ok: true, o: sach }
+    return { ok: true, o: sach, json: moTaMauJson(sach.mau) }
   })
+
+  function moTaMauJson(chu) {
+    if (!promptJson.trongNhuJson(chu)) return { la: false }
+    const kq = promptJson.docMauJson(chu)
+    if (!kq.ok) return { la: false, loi: kq.loi }
+    const ct = promptJson.phanTichMau(kq.mau)
+    return {
+      la: true,
+      soKhoa: Object.keys(kq.mau).length,
+      khoaChinh: ct.chinh ? ct.chinh.join('.') : '',
+      khoaCanh: [ct.chinh, ct.hanhDong, ct.boiCanh, ct.nhanVat].filter(Boolean).map((d) => d.join('.'))
+    }
+  }
   // Xem thử prompt của cảnh đầu với style đang lưu (không cần Claude).
   ipcMain.handle('promptanh:xem-thu', (_su, { canh }) => {
     const caiDat = kho.docCaiDat()
     const c = (canh && canh[0]) || { so: 1, ten: '001', chu: 'An old farmer stands at the edge of a flooded field at dawn.' }
+    const mj = mauJsonHienTai(caiDat)
+    if (mj.loi) return { prompt: mj.loi, loi: true }
+    if (mj.la) {
+      const p = promptAnh.taoTatCaPromptJson([c], mj.mau, { khoNhanVat: caiDat.khoNhanVat || [], khoBoiCanh: caiDat.khoBoiCanh || [] })[0]
+      return { ...p, prompt: JSON.stringify(JSON.parse(p.prompt), null, 2) }
+    }
     return promptAnh.ghepPrompt(c, {
       template: caiDat.templatePrompt || promptAnh.TEMPLATE_MAC_DINH,
       o: caiDat.oPrompt || {},
@@ -1664,6 +1738,11 @@ async function chaySmoke() {
   fs.mkdirSync(thuMucAnh, { recursive: true })
   nhatKy.tin(`Smoke ghi ảnh vào: ${thuMucAnh}`)
 
+  // 0.6.1: đi lại đúng đường lỗi người dùng báo — mẫu JSON, sinh, đổi mẫu, sinh lại.
+  const jsonMau = await cuaSo.webContents.executeJavaScript('window.smokeKiemJsonMau()')
+    .then((c) => JSON.parse(c)).catch((e) => ({ ok: false, loi: e.message }))
+  nhatKy.tin('Smoke: prompt mẫu JSON — ' + JSON.stringify(jsonMau))
+
   const cacMan = ['y-tuong', 'de-xuat', 'kenh', 'loi-thoai', 'kich-ban', 'kiem-duyet', 'prompt-anh', 'footage', 'trinh-duyet', 'cai-dat', 'huong-dan', 'nhat-ky']
   const thieu = []
 
@@ -1701,6 +1780,7 @@ async function chaySmoke() {
     ['kich-ban', '#the-kich-ban-hien-tai', 'kich-ban-hien-tai'],
     ['prompt-anh', '#o-prompt-mau', 'prompt-anh-style-mau'],
     ['prompt-anh', '#thong-ke-canh', 'prompt-anh-cat-canh'],
+    ['prompt-anh', '#bang-canh', 'prompt-anh-bang-json'],
     ['cai-dat', '[data-khoa="khoaClaude"]', 'cai-dat-claude-api']
   ]
   for (const [man, chon, tenAnh] of khoiDuoiTamNhin) {
@@ -1797,12 +1877,12 @@ async function chaySmoke() {
     })()
   `)
 
-  const ketQua = { thieuMan: thieu, thieuPhanTu, thieuKhoaCaiDat: thieuKhoa, bicHe, anhThumbnail: anhVo, anhFootage }
+  const ketQua = { thieuMan: thieu, thieuPhanTu, thieuKhoaCaiDat: thieuKhoa, bicHe, anhThumbnail: anhVo, anhFootage, jsonMau }
   fs.writeFileSync(path.join(thuMucAnh, 'ket-qua-smoke.json'), JSON.stringify(ketQua, null, 2))
   nhatKy.tin('Smoke kết quả:', JSON.stringify(ketQua))
 
   const vo = thieu.length || thieuPhanTu.length || (thieuKhoa && thieuKhoa.length) || bicHe.bi ||
-    !anhVo.tong || anhVo.vo > 0 || !anhFootage.tong || anhFootage.vo > 0
+    !anhVo.tong || anhVo.vo > 0 || !anhFootage.tong || anhFootage.vo > 0 || !jsonMau.ok
   app.exit(vo ? 1 : 0)
 }
 

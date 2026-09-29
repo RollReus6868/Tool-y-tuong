@@ -545,6 +545,31 @@ function ghepPromptThuong(canh, chuPrompt, { khoNhanVat = [], amBan = MAC_DINH_O
   }
 }
 
+// 0.6.1 — prompt mẫu là JSON thì MỌI prompt ra JSON cùng cấu trúc (xem
+// prompt-json.js). promptThang: JSON Claude viết theo mẫu (dùng nguyên văn).
+function taoTatCaPromptJson(canh, mau, tuyChon = {}) {
+  const pj = require('./prompt-json')
+  const moTa = tuyChon.moTaTheoCanh || {}
+  const thang = tuyChon.promptThang || {}
+  return canh.map((c) => {
+    const nhanVat = timTrongCanh(c.chu, tuyChon.khoNhanVat || [])
+    const boiCanh = timTrongCanh(c.chu, tuyChon.khoBoiCanh || [])
+    const tuClaude = thang[c.so]
+    const prompt = tuClaude || pj.thuGon(pj.ghepPromptJson(c, mau, { moTaCanh: moTa[c.so] || null, nhanVat, boiCanh }))
+    return {
+      so: c.so,
+      ten: c.ten,
+      chuCanh: c.chu,
+      prompt,
+      amBan: '',
+      nhanVat: nhanVat.map((n) => n.ten),
+      boiCanh: boiCanh.map((b) => b.ten),
+      dungNguyenVan: !!tuClaude,
+      dangJson: true
+    }
+  })
+}
+
 function taoTatCaPromptHonHop(canh, tuyChon = {}) {
   const moTa = tuyChon.moTaTheoCanh || {}
   const thang = tuyChon.promptThang || {}
@@ -620,6 +645,7 @@ module.exports = {
   phanTichTraVe,
   ghepPromptThuong,
   taoTatCaPromptHonHop,
+  taoTatCaPromptJson,
   xuatPromptsTxt,
   xuatTenAnh,
   xuatScenesJson,

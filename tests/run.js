@@ -2449,6 +2449,132 @@ async function chay() {
   })
 
   // =========================================================================
+  nhom('44. Prompt mẫu dạng JSON — sinh JSON cùng cấu trúc, sinh lại theo mẫu mới')
+
+  const pj = require('../src/prompt-json')
+  const MAU_JSON = `{
+    "scene_description": "An elderly shepherd walks up a rocky hillside at dusk",
+    "style": "oil painting, 19th-century biblical illustration",
+    "lighting": "warm golden rim light",
+    "camera": { "shot": "wide shot", "angle": "low angle", "lens": "35mm" },
+    "setting": "rocky hillside above a village",
+    "characters": ["old shepherd with a staff"],
+    "aspect_ratio": "16:9",
+    "negative_prompt": "text, watermark"
+  }`
+  const canhJ = promptAnh.catCanh('Moses stood before Pharaoh in the great hall of the palace and asked him again to let the people go free. ' +
+    'At dawn the river turned red and the fishermen ran from the muddy banks in fear of what they saw.', { tuMoiCanh: 27 })
+  const khoNV = [{ ten: 'Moses', moTa: 'a tall bearded man in his eighties, coarse brown robe, wooden staff', tuKhoa: [] }]
+
+  await kiem('đọc mẫu: JSON hợp lệ, khối ```json```, và BÁO LỖI khi JSON hỏng (không lặng lẽ coi là chữ)', () => {
+    assert.strictEqual(pj.docMauJson(MAU_JSON).ok, true)
+    assert.strictEqual(pj.docMauJson('```json\n' + MAU_JSON + '\n```').ok, true)
+    const hong = pj.docMauJson('{ "style": "a", "lighting": "b", }')
+    assert.strictEqual(hong.ok, false); assert.ok(/lỗi cú pháp/.test(hong.loi))
+    assert.strictEqual(pj.trongNhuJson('cinematic still, 35mm'), false)
+    assert.strictEqual(pj.trongNhuJson('{ "style": "x" }'), true)
+    assert.ok(/MỘT đối tượng/.test(pj.docMauJson('[{"a":1}]').loi || '') || !pj.trongNhuJson('[{"a":1}]'))
+  })
+
+  await kiem('nhận đúng khoá theo cảnh: scene_description (không nhầm camera.shot), setting, characters', () => {
+    const ct = pj.phanTichMau(pj.docMauJson(MAU_JSON).mau)
+    assert.deepStrictEqual(ct.chinh, ['scene_description'])
+    assert.deepStrictEqual(ct.boiCanh, ['setting'])
+    assert.strictEqual(ct.nhanVat[0], 'characters')
+    const ct2 = pj.phanTichMau({ camera: { shot: 'wide shot' }, style: 's' })
+    assert.strictEqual(ct2.chinh, null, 'camera.shot KHÔNG được coi là khoá nội dung')
+  })
+
+  await kiem('sinh toàn bộ: MỖI prompt là JSON một dòng, CÙNG khoá & kiểu với mẫu, khoá phong cách giữ nguyên', () => {
+    const mau = pj.docMauJson(MAU_JSON).mau
+    const ds = promptAnh.taoTatCaPromptJson(canhJ, mau, { khoNhanVat: khoNV })
+    assert.ok(ds.length >= 1)
+    assert.strictEqual(promptAnh.kiemTraLienTuc(ds).ok, true)
+    const txt = promptAnh.xuatPromptsTxt(ds)
+    assert.strictEqual(txt.trim().split('\n').length, ds.length, 'prompts.txt: đúng một dòng mỗi prompt')
+    const khoaCay = (o) => Object.keys(o).sort().map((k) => k + (o[k] && typeof o[k] === 'object' && !Array.isArray(o[k]) ? '{' + khoaCay(o[k]) + '}' : '')).join(',')
+    for (const p of ds) {
+      const o = JSON.parse(p.prompt)
+      assert.strictEqual(khoaCay(o), khoaCay(mau), 'cấu trúc khoá phải y hệt mẫu')
+      assert.strictEqual(o.style, mau.style)
+      assert.deepStrictEqual(o.camera, mau.camera)
+      assert.strictEqual(o.negative_prompt, mau.negative_prompt)
+      assert.ok(Array.isArray(o.characters), 'characters giữ KIỂU mảng như mẫu')
+      assert.ok(!o.scene_description.includes('shepherd'), 'không được giữ chủ thể của mẫu')
+      assert.notStrictEqual(o.setting, mau.setting, 'bối cảnh của mẫu không được lan sang mọi cảnh')
+    }
+    const c1 = JSON.parse(ds[0].prompt)
+    assert.ok(c1.scene_description.startsWith('Moses stood before Pharaoh'))
+    assert.deepStrictEqual(c1.characters, [khoNV[0].moTa], 'mô tả nhân vật chèn NGUYÊN VĂN')
+  })
+
+  await kiem('ĐỔI mẫu rồi sinh lại thì ra prompt theo mẫu MỚI (lỗi "sinh lại không được")', () => {
+    const mau1 = pj.docMauJson(MAU_JSON).mau
+    const mau2 = { prompt: 'x', art_style: 'charcoal sketch, high contrast', ratio: '16:9' }
+    const a = promptAnh.taoTatCaPromptJson(canhJ, mau1, {})
+    const b = promptAnh.taoTatCaPromptJson(canhJ, mau2, {})
+    const o2 = JSON.parse(b[0].prompt)
+    assert.deepStrictEqual(Object.keys(o2), ['prompt', 'art_style', 'ratio'])
+    assert.strictEqual(o2.art_style, 'charcoal sketch, high contrast')
+    assert.notStrictEqual(a[0].prompt, b[0].prompt)
+    // Mẫu không có khoá nội dung nào → thêm khoá "scene" rõ nghĩa, không đè khoá phong cách.
+    const o3 = JSON.parse(promptAnh.taoTatCaPromptJson(canhJ, { style: 'watercolor', aspect_ratio: '16:9' }, {})[0].prompt)
+    assert.strictEqual(o3.style, 'watercolor'); assert.ok(o3.scene.startsWith('Moses'))
+  })
+
+  await kiem('giao diện: nút Sinh tự lưu ô style và hỏi bỏ kết quả Claude viết theo mẫu cũ', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'ui', 'app.js'), 'utf8')
+    const than = app.slice(app.indexOf("$('#nut-tao-prompt').onclick"), app.indexOf("$('#nut-xuat-prompt').onclick"))
+    assert.ok(/await luuStyleTuO\(\)/.test(than), 'phải lưu style trước khi sinh')
+    assert.ok(/styleCuaKetQuaClaude !== dauVanStyle\(\)/.test(than), 'phải phát hiện kết quả Claude theo mẫu cũ')
+    const chep = app.slice(app.indexOf("$('#nut-prompt-mo-ta').onclick"), app.indexOf("$('#nut-doc-mo-ta').onclick"))
+    assert.ok(/await luuStyleTuO\(\)/.test(chep), 'chép prompt lô cũng phải dùng style đang gõ')
+  })
+
+  await kiem('prompt gửi Claude theo mẫu JSON: kèm nguyên mẫu, dặn cùng khoá, định dạng "[n] {JSON một dòng}"', () => {
+    const mau = pj.docMauJson(MAU_JSON).mau
+    const p = pj.taoPromptJsonTheoMau(canhJ, mau, { khoNhanVat: khoNV, coAnhMau: true })
+    assert.ok(p.includes('"scene_description"') && p.includes('"negative_prompt"'))
+    assert.ok(p.includes('Không thêm khoá, không bớt khoá'))
+    assert.ok(p.includes(`[${canhJ[0].so}] {`))
+    assert.ok(p.includes(khoNV[0].moTa) && /ĐÍNH KÈM/.test(p))
+  })
+
+  await kiem('đọc JSON Claude trả về: một dòng, xuống dòng, khối mã, mảng có "so"; báo cảnh lệch khoá / JSON hỏng', () => {
+    const mau = { scene: 'x', style: 's', camera: { angle: 'a' } }
+    const tra = [
+      'Here you go:',
+      '```json',
+      '[1] {"scene": "Moses before Pharaoh", "style": "s", "camera": {"angle": "low"}}',
+      '[2] {',
+      '  "scene": "red river at dawn",',
+      '  "style": "s",',
+      '  "camera": { "angle": "high" }',
+      '}',
+      '[3] {"scene": "fishermen", "style": "s"}',
+      '[4] {"scene": "broken", "style": }',
+      '```'
+    ].join('\n')
+    const kq = pj.docTraLoiJson(tra, mau)
+    assert.strictEqual(kq.soDoc, 3)
+    assert.strictEqual(kq.prompt[2], '{"scene":"red river at dawn","style":"s","camera":{"angle":"high"}}', 'JSON xuống dòng phải được thu về MỘT dòng')
+    assert.ok(kq.loiCanh.some((l) => /Cảnh 3: khác cấu trúc mẫu — thiếu camera/.test(l)))
+    assert.ok(kq.loiCanh.some((l) => /Cảnh 4: JSON lỗi/.test(l)))
+    const mang = pj.docTraLoiJson('[{"so": 7, "scene": "a", "style": "s", "camera": {"angle": "b"}}]', mau)
+    assert.strictEqual(mang.prompt[7], '{"scene":"a","style":"s","camera":{"angle":"b"}}', 'bỏ trường "so" khỏi prompt')
+    assert.ok(pj.docTraLoiJson('không có gì', mau).loi)
+  })
+
+  await kiem('prompt Claude viết theo mẫu dùng NGUYÊN VĂN; cảnh thiếu thì tool tự ghép JSON theo mẫu', () => {
+    const mau = pj.docMauJson(MAU_JSON).mau
+    const tuClaude = JSON.stringify({ ...mau, scene_description: 'Claude wrote this' })
+    const ds = promptAnh.taoTatCaPromptJson(canhJ, mau, { promptThang: { 1: tuClaude } })
+    assert.strictEqual(ds[0].prompt, tuClaude)
+    assert.strictEqual(ds[0].dungNguyenVan, true)
+    if (ds[1]) assert.strictEqual(ds[1].dungNguyenVan, false)
+  })
+
+  // =========================================================================
   console.log('\n' + '─'.repeat(58))
   console.log(`TẦNG 1: ${soQua} qua, ${soTruot.length} truột`)
   if (soTruot.length) {

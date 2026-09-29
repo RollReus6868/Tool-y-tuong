@@ -11,6 +11,40 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.6.1 — prompt mẫu dạng JSON: sinh ra JSON cùng cấu trúc, đổi mẫu thì sinh lại được
+
+**Lỗi 1 — dán mẫu JSON mà prompt sinh ra không phải JSON.** Nút "Sinh toàn bộ
+prompt" luôn ghép kiểu chuỗi phẩy qua template `{style}, {camera}, {canh}…`; ô
+Prompt mẫu **không hề được dùng khi sinh**, chỉ được chèn vào lời nhờ Claude. Còn
+khi nhờ Claude kiểu "prompt thường", Claude trả JSON xuống nhiều dòng thì bộ đọc
+từng dòng cắt mỗi dòng JSON thành một "prompt" rác.
+
+Nay (mô-đun mới `src/prompt-json.js`): Prompt mẫu là JSON thì **mọi prompt ra JSON
+cùng cấu trúc, cùng tên khoá, cùng kiểu giá trị**, một dòng mỗi prompt (đúng bất
+biến của Flow):
+
+- Khoá **theo cảnh** được thay cho từng cảnh: nội dung (`scene`, `scene_description`,
+  `subject`, `description`, `prompt`…), hành động, bối cảnh, nhân vật. Bối cảnh và
+  nhân vật **của mẫu** không lan sang mọi cảnh; nhân vật trong Kho chèn nguyên văn,
+  giữ đúng kiểu (chuỗi / mảng) của mẫu.
+- Khoá **phong cách** (style, ánh sáng, camera, màu, tỉ lệ khung, negative…) giữ
+  nguyên như mẫu. `camera.shot = "wide shot"` không bị nhận nhầm là khoá nội dung.
+- Bước 3 nhờ Claude: tool tự đổi sang lời nhờ "viết JSON theo mẫu", trả về dạng
+  `[n] {JSON một dòng}`. Bộ đọc chịu được JSON xuống dòng, khối mã, mảng có `"so"`;
+  cảnh nào lệch khoá hay JSON hỏng thì báo đúng số cảnh. Ô "Kiểu trả về" khoá lại.
+- JSON mẫu gõ hỏng (thừa dấu phẩy, nháy đơn…) thì **báo lỗi cú pháp**, không lặng
+  lẽ coi là prompt chữ.
+
+**Lỗi 2 — đổi prompt mẫu rồi bấm Sinh lại thì ra y như cũ.** Hai nguyên nhân:
+nút Sinh đọc style **đã lưu** (chỉ lưu khi bấm "Lưu style"), và prompt Claude viết
+theo mẫu cũ vẫn được dùng nguyên văn. Nay nút Sinh (và nút chép prompt lô) **tự
+lưu ô style trước**; nếu style đã đổi so với lúc dán kết quả Claude thì hỏi có bỏ
+kết quả cũ để sinh theo mẫu mới không. Dòng kết quả ghi giờ sinh để thấy rõ là
+vừa sinh lại.
+
+Kiểm thử tầng 2 nay **đi lại đúng đường người dùng báo lỗi**: dán mẫu JSON → cắt
+cảnh → bấm Sinh → đổi mẫu → bấm Sinh lại → dán JSON hỏng, bằng nút thật và IPC thật.
+
 ### 0.6.0 — lời thoại hiện đủ + xuất Word, viết kịch bản nhanh hơn, style mẫu cho prompt ảnh
 
 **Lời thoại theo dự án không có chỗ hiện kết quả.** Chế độ dự án (và nút "Lấy lời
@@ -495,7 +529,7 @@ mới** trong app tự thấy bản mới.
 
 | Tầng | Lệnh | Bắt được gì |
 |---|---|---|
-| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ**, **tham số yt-dlp lấy phụ đề**, **xuất .docx, tách kịch bản dán về, Claude API (nguyên văn, thử lại, chạy tiếp), cắt cảnh, style mẫu** (213 ca) |
+| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ**, **tham số yt-dlp lấy phụ đề**, **xuất .docx, tách kịch bản dán về, Claude API (nguyên văn, thử lại, chạy tiếp), cắt cảnh, style mẫu**, **prompt mẫu JSON** (221 ca) |
 | 2. Giao diện | `YT_SMOKE=1 npx electron --no-sandbox .` | thiếu màn, thiếu phần tử, **thiếu khoá cài đặt**, lớp phủ che giao diện, **thumbnail và ảnh xem trước footage có vẽ ra không**; nạp dữ liệu mẫu rồi chụp ảnh từng màn vào `shots/` |
 
 Tầng 2 chụp ảnh xong **phải mở ảnh ra xem bằng mắt**. Nút bị cắt, chữ vỡ dấu,

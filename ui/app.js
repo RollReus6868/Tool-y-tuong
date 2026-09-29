@@ -1282,11 +1282,15 @@ $('#nut-prompt-mo-ta').onclick = async () => {
   const moiLo = caiDatHienTai ? Number(caiDatHienTai.soCanhMoiLo) || 50 : 50
   const kieu = $('#o-kieu-mo-ta').value
   const boSo = $('#o-bo-canh-footage').checked ? soCoTepFootage() : []
+  // Lưu style đang gõ TRƯỚC khi chép — không thì Claude nhận style cũ.
+  await luuStyleTuO()
   const kq = await window.api.promptMoTa(canhHienTai, lo, moiLo, kieu, boSo)
+  if (kq.ok === false) { await baoTin(kq.loi); return }
   if (!kq.prompt) { await baoTin('Không còn cảnh nào cần mô tả (mọi cảnh đã có footage?).'); return }
   await chepVaBao(kq.prompt, $('#ghi-chu-lo'))
-  $('#ghi-chu-lo').textContent +=
-    ` · lô ${kq.loThu}/${kq.tongLo} (${kq.soCanhTrongLo} cảnh, kiểu ${kq.kieu === 'thuong' ? 'prompt thường' : 'JSON'})`
+  styleLucXinClaude = dauVanStyle()
+  const tenKieu = kq.kieu === 'json-mau' ? 'JSON theo prompt mẫu' : (kq.kieu === 'thuong' ? 'prompt thường' : 'JSON')
+  $('#ghi-chu-lo').textContent += ` · lô ${kq.loThu}/${kq.tongLo} (${kq.soCanhTrongLo} cảnh, kiểu ${tenKieu})`
   $('#o-lo-thu').max = kq.tongLo
 }
 
@@ -1303,10 +1307,14 @@ $('#nut-doc-mo-ta').onclick = async () => {
 
   if (kq.kieu === 'json') Object.assign(moTaTheoCanh, kq.moTa)
   else Object.assign(promptThangHienTai, kq.prompt)
+  // Nhớ kết quả Claude này được viết theo style nào — đổi style sau đó thì
+  // "Sinh toàn bộ prompt" sẽ hỏi có bỏ kết quả cũ không.
+  styleCuaKetQuaClaude = styleLucXinClaude || dauVanStyle()
 
   const daCo = Object.keys(moTaTheoCanh).length + Object.keys(promptThangHienTai).length
+  const tenKieu = kq.kieu === 'json-mau' ? 'JSON theo prompt mẫu' : (kq.kieu === 'json' ? 'JSON' : 'prompt thường')
   $('#ket-qua-mo-ta').textContent =
-    `Nhận ra kiểu ${kq.kieu === 'json' ? 'JSON' : 'prompt thường'} · đọc được ${kq.soDoc} cảnh · ` +
+    `Nhận ra kiểu ${tenKieu} · đọc được ${kq.soDoc} cảnh · ` +
     `tổng đã có: ${daCo}/${canhHienTai.length}` + (kq.canhBao ? ' · ' + kq.canhBao : '')
   $('#ket-qua-mo-ta').className = kq.canhBao ? 'ghi-chu ghi-chu-vang' : 'ghi-chu ghi-chu-xanh'
   $('#o-mo-ta-tra-ve').value = ''
@@ -1335,16 +1343,41 @@ $('#nut-lay-kich-ban-du-an').onclick = async () => {
   $('#ghi-chu-nguon-anh').className = 'ghi-chu ghi-chu-xanh'
 }
 
+// LỖI CŨ (0.6.0): đổi prompt mẫu rồi bấm "Sinh toàn bộ prompt" lại thì ra y
+// như cũ, vì (1) style chỉ được lưu khi bấm "Lưu style" — nút Sinh đọc style
+// ĐÃ LƯU; (2) prompt Claude viết theo mẫu cũ vẫn được dùng nguyên văn. Nay nút
+// Sinh tự lưu ô style, và nếu style đã đổi so với lúc xin Claude thì hỏi có bỏ
+// kết quả Claude cũ không.
 $('#nut-tao-prompt').onclick = async () => {
   if (!canhHienTai.length) { await baoTin('Cắt cảnh trước đã.'); return }
+  await luuStyleTuO()
+  const coKetQuaClaude = Object.keys(moTaTheoCanh).length + Object.keys(promptThangHienTai).length
+  if (coKetQuaClaude && styleCuaKetQuaClaude && styleCuaKetQuaClaude !== dauVanStyle()) {
+    const bo = await hoiCo(`Style / prompt mẫu đã ĐỔI sau khi anh dán kết quả Claude (${coKetQuaClaude} cảnh). ` +
+      'Kết quả đó viết theo mẫu CŨ. Bỏ kết quả cũ và sinh lại toàn bộ theo mẫu MỚI? ' +
+      '(Chọn "Giữ" thì các cảnh đó vẫn theo mẫu cũ — muốn Claude viết lại theo mẫu mới thì chép lại prompt lô ở Bước 3.)', 'Bỏ, sinh theo mẫu mới')
+    if (bo) {
+      moTaTheoCanh = {}
+      promptThangHienTai = {}
+      styleCuaKetQuaClaude = ''
+      $('#ket-qua-mo-ta').textContent = 'Đã bỏ kết quả Claude cũ (viết theo mẫu cũ).'
+      $('#ket-qua-mo-ta').className = 'ghi-chu ghi-chu-vang'
+    }
+  }
   const kq = await window.api.taoPromptAnh(canhHienTai, moTaTheoCanh, promptThangHienTai)
+  if (kq.ok === false) {
+    $('#ghi-chu-xuat').innerHTML = `<span class="huy-hieu-loi">✘ Không sinh được</span> ${thoat(kq.loi)}`
+    $('#ghi-chu-xuat').className = 'ghi-chu'
+    return
+  }
   cacPromptHienTai = kq.cacPrompt
   veBangCanh()
-  $('#ghi-chu-xuat').textContent = kq.kiemTra.ok
-    ? `Đã sinh ${cacPromptHienTai.length} prompt, số thứ tự liên tục` +
-      (kq.soNguyenVan ? ` · ${kq.soNguyenVan} prompt dùng nguyên văn.` : '.')
-    : 'LỖI đánh số: ' + kq.kiemTra.loi.slice(0, 3).join('; ')
-  $('#ghi-chu-xuat').className = kq.kiemTra.ok ? 'ghi-chu ghi-chu-xanh' : 'ghi-chu ghi-chu-vang'
+  $('#ghi-chu-xuat').innerHTML = kq.kiemTra.ok
+    ? `<span class="huy-hieu-xong">✔ Đã sinh ${cacPromptHienTai.length} prompt${kq.dangJson ? ' dạng JSON theo mẫu' : ''}</span> số thứ tự liên tục` +
+      (kq.soNguyenVan ? ` · ${kq.soNguyenVan} prompt Claude viết (dùng nguyên văn)` : '') +
+      ` · lúc ${new Date().toLocaleTimeString('vi-VN')}`
+    : `<span class="huy-hieu-loi">✘ LỖI đánh số</span> ${thoat(kq.kiemTra.loi.slice(0, 3).join('; '))}`
+  $('#ghi-chu-xuat').className = 'ghi-chu'
 }
 
 $('#nut-xuat-prompt').onclick = async () => {
@@ -1361,31 +1394,66 @@ $('#nut-xuat-prompt').onclick = async () => {
 // --- Bước 2: Style mẫu (0.6.0) ---------------------------------------------
 const O_STYLE = { mau: '#o-prompt-mau', style: '#o-style-chung', amBan: '#o-am-ban', camera: '#o-camera', anhSang: '#o-anh-sang', khongKhi: '#o-khong-khi', duoi: '#o-duoi' }
 
+let styleLucXinClaude = ''      // dấu vân của style lúc chép prompt lô gửi Claude
+let styleCuaKetQuaClaude = ''   // dấu vân của style mà kết quả Claude đang giữ được viết theo
+let styleDaLuu = ''             // dấu vân của style đã lưu gần nhất
+
+function styleTuO() {
+  const o = { coAnhMau: $('#o-co-anh-mau').checked }
+  for (const [k, chon] of Object.entries(O_STYLE)) o[k] = $(chon).value
+  return o
+}
+
+function dauVanStyle(o = styleTuO()) {
+  return JSON.stringify(Object.keys(o).sort().map((k) => [k, String(o[k] ?? '').replace(/\s+/g, ' ').trim()]))
+}
+
+// Lưu ô style (chỉ khi có đổi). Dùng trước MỌI thao tác đọc style.
+async function luuStyleTuO() {
+  const o = styleTuO()
+  const dau = dauVanStyle(o)
+  if (dau === styleDaLuu) return null
+  const kq = await window.api.luuStyleAnh(o)
+  styleDaLuu = dau
+  veTrangThaiStyle(kq.o, kq.json)
+  return kq
+}
+
 async function napStyleAnh() {
-  const { o, macDinh } = await window.api.docStyleAnh()
+  const { o, macDinh, json } = await window.api.docStyleAnh()
   for (const [k, chon] of Object.entries(O_STYLE)) {
     $(chon).value = o[k] || ''
     if (macDinh[k]) $(chon).placeholder = macDinh[k]
   }
   $('#o-co-anh-mau').checked = !!o.coAnhMau
-  veTrangThaiStyle(o)
+  styleDaLuu = dauVanStyle()
+  veTrangThaiStyle(o, json)
 }
 
-function veTrangThaiStyle(o) {
+function veTrangThaiStyle(o, json = {}) {
   const co = []
-  if (o.mau) co.push('prompt mẫu')
+  if (o.mau) co.push(json && json.la ? `prompt mẫu JSON (${json.soKhoa} khoá)` : 'prompt mẫu')
   if (o.style) co.push('style chung riêng')
   if (o.coAnhMau) co.push('ảnh mẫu đính kèm')
-  $('#ghi-chu-style').innerHTML = co.length
+  let html = co.length
     ? `<span class="huy-hieu-xong">✔ Đang dùng: ${thoat(co.join(' + '))}</span>`
     : '<span class="canh-bao-manh">Chưa có style riêng — đang dùng style mặc định "cinematic documentary still".</span>'
+  if (json && json.loi) html = `<span class="huy-hieu-loi">✘ Prompt mẫu JSON bị lỗi</span> <span class="canh-bao-manh">${thoat(json.loi)}</span>`
+  else if (json && json.la) {
+    html += ` <span class="ghi-chu">→ mọi prompt sinh ra là <b>JSON cùng cấu trúc</b>; khoá thay theo cảnh: <b>${thoat((json.khoaCanh || []).join(', ') || 'scene (thêm mới)')}</b>, các khoá còn lại giữ nguyên như mẫu.</span>`
+  }
+  $('#ghi-chu-style').innerHTML = html
+  // Mẫu JSON thì Claude luôn trả "[n] {JSON theo mẫu}" — ô "Kiểu trả về" không
+  // còn tác dụng, khoá lại cho khỏi nhầm.
+  const laJson = !!(json && json.la)
+  $('#o-kieu-mo-ta').disabled = laJson
+  $('#o-kieu-mo-ta').title = laJson ? 'Prompt mẫu là JSON → Claude trả JSON theo mẫu, ô này không còn tác dụng' : ''
+  $('#nut-doc-mo-ta').textContent = laJson ? 'Đọc JSON theo mẫu' : 'Đọc kết quả'
 }
 
 $('#nut-luu-style').onclick = async () => {
-  const o = { coAnhMau: $('#o-co-anh-mau').checked }
-  for (const [k, chon] of Object.entries(O_STYLE)) o[k] = $(chon).value
-  const kq = await window.api.luuStyleAnh(o)
-  veTrangThaiStyle(kq.o)
+  styleDaLuu = ''   // bấm tay thì luôn lưu
+  await luuStyleTuO()
   // Prompt đã sinh trước đó theo style cũ — nhắc sinh lại.
   if (cacPromptHienTai.length) {
     $('#ghi-chu-xuat').textContent = 'Style vừa đổi — bấm "Sinh toàn bộ prompt" lại để áp style mới.'
@@ -1394,11 +1462,13 @@ $('#nut-luu-style').onclick = async () => {
 }
 
 $('#nut-xem-thu-style').onclick = async () => {
-  await $('#nut-luu-style').onclick()
+  await luuStyleTuO()
   const p = await window.api.xemThuPromptAnh(canhHienTai.slice(0, 1))
   $('#xem-thu-style').hidden = false
-  $('#xem-thu-style').textContent = (canhHienTai.length ? 'Cảnh 1 (không nhờ Claude): ' : 'Câu ví dụ (chưa cắt cảnh): ') + p.prompt +
-    ($('#o-prompt-mau').value.trim() ? '\n\n→ Prompt mẫu chỉ có tác dụng khi nhờ Claude ở Bước 3.' : '')
+  const laJson = p.dangJson
+  $('#xem-thu-style').textContent = (canhHienTai.length ? 'Cảnh 1 (không nhờ Claude): ' : 'Câu ví dụ (chưa cắt cảnh): ') + '\n' + p.prompt +
+    (laJson ? '\n\n→ JSON cùng cấu trúc mẫu. Nhờ Claude ở Bước 3 thì các khoá theo cảnh (hành động, bối cảnh, ánh sáng…) được viết sát cảnh hơn.'
+      : ($('#o-prompt-mau').value.trim() && !p.loi ? '\n\n→ Prompt mẫu dạng chữ chỉ có tác dụng khi nhờ Claude ở Bước 3.' : ''))
 }
 
 // Kho nhân vật
@@ -2767,6 +2837,42 @@ window.smokeDuLieuMau = async function () {
   $('#uoc-kich-ban-api').innerHTML = 'Mô hình: <b>Claude Opus 5.5 (khuyến nghị — viết hay nhất trong mức giá vừa)</b> · 9 lượt gọi · ước tính <b>~$0.61</b> (có thể tới ~$1.22 vì phần "suy nghĩ" của mô hình cũng tính tiền)'
   veThongKeCanh({ soCanh: 409, tongTu: 11040, tuTrungBinh: 27, tongPhut: 61, canhQuaNgan: 2, canhQuaDai: 1, soCanhNgan: [57, 212], soCanhDai: [130], nguongNgan: 12, nguongDai: 45 })
   return { soDong: dong.length, daChon: videoDaChon.length, canhFootage: keHoachFt.canh.length }
+}
+
+// ---------------------------------------------------------------------------
+// Kiểm thử tầng 2: đi đúng đường người dùng đã báo lỗi (0.6.1) — dán prompt
+// mẫu JSON, cắt cảnh, bấm Sinh; ĐỔI mẫu, bấm Sinh lại. Bấm nút thật, qua IPC
+// thật, đọc tệp cài đặt thật (thư mục tạm của smoke).
+// ---------------------------------------------------------------------------
+window.smokeKiemJsonMau = async function () {
+  const ra = { buoc: [] }
+  moMan('prompt-anh')
+  $('#o-kich-ban-anh').value = 'Moses stood before Pharaoh in the great hall of the palace and asked him again to let the people go free. ' +
+    'At dawn the river turned red and the fishermen ran from the muddy banks in fear of what they saw. '.repeat(2)
+  await $('#nut-cat-canh').onclick()
+  ra.soCanh = canhHienTai.length
+  $('#o-prompt-mau').value = '{\n  "scene_description": "An elderly shepherd on a hillside",\n  "style": "oil painting, biblical illustration",\n  "camera": {"shot": "wide shot"},\n  "negative_prompt": "text"\n}'
+  await $('#nut-tao-prompt').onclick()
+  const p1 = cacPromptHienTai[0] && cacPromptHienTai[0].prompt
+  let o1 = null
+  try { o1 = JSON.parse(p1) } catch (_) {}
+  ra.buoc.push({ lan: 1, laJson: !!o1, khoa: o1 ? Object.keys(o1) : [], style: o1 && o1.style })
+  $('#o-prompt-mau').value = '{"prompt": "x", "art_style": "charcoal sketch, high contrast", "ratio": "16:9"}'
+  await $('#nut-tao-prompt').onclick()
+  const p2 = cacPromptHienTai[0] && cacPromptHienTai[0].prompt
+  let o2 = null
+  try { o2 = JSON.parse(p2) } catch (_) {}
+  ra.buoc.push({ lan: 2, laJson: !!o2, khoa: o2 ? Object.keys(o2) : [], style: o2 && o2.art_style })
+  $('#o-prompt-mau').value = '{ "style": "broken", }'
+  await $('#nut-tao-prompt').onclick()
+  ra.baoLoiJsonHong = /Không sinh được/.test($('#ghi-chu-xuat').textContent) && /cú pháp/.test($('#ghi-chu-xuat').textContent)
+  ra.ok = ra.soCanh > 0 && ra.buoc[0].laJson && ra.buoc[0].style === 'oil painting, biblical illustration' &&
+    ra.buoc[1].laJson && ra.buoc[1].style === 'charcoal sketch, high contrast' &&
+    ra.buoc[1].khoa.join(',') === 'prompt,art_style,ratio' && ra.baoLoiJsonHong
+  // Trả ô về mẫu hợp lệ để ảnh chụp sau đó không hiện lỗi.
+  $('#o-prompt-mau').value = '{\n  "scene_description": "An elderly shepherd on a hillside",\n  "style": "oil painting, biblical illustration",\n  "camera": {"shot": "wide shot"},\n  "negative_prompt": "text"\n}'
+  await $('#nut-tao-prompt').onclick()
+  return JSON.stringify(ra)
 }
 
 // ---------------------------------------------------------------------------
