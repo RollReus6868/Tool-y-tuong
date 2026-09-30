@@ -71,6 +71,17 @@ function scriptDocTrang(loai) {
 })()`
 }
 
+// Script chạy fetch từ bên trong trang (hàm tự gọi, không arrow, trả CHUỖI
+// JSON — cùng luật với scriptDocTrang). URL chỉ nhận trang Trends.
+function scriptGoiTrongTrang(url) {
+  if (!/^https:\/\/trends\.google\.com\/trends\/api\//.test(String(url))) throw new Error('URL không phải Trends')
+  return `(function () {
+  return fetch(${JSON.stringify(url)}, { credentials: 'include' })
+    .then(function (r) { return r.text().then(function (t) { return JSON.stringify({ ma: r.status, chu: t }); }); })
+    .catch(function (e) { return JSON.stringify({ loi: String(e && e.message || e) }); });
+})()`
+}
+
 function taoQuanLy({ electron, cuaSo, nhatKy = { tin() {}, loi() {} }, baoSuKien = () => {} }) {
   const { WebContentsView, session, BrowserWindow } = electron
 
@@ -272,7 +283,33 @@ function taoQuanLy({ electron, cuaSo, nhatKy = { tin() {}, loi() {} }, baoSuKien
       try { if (!win.isDestroyed()) win.destroy() } catch (_) {}
     }
 
-    return { doc, dong }
+    // 0.7.0 — Google Trends: mở trang (lấy cookie NID như người dùng thật) rồi
+    // gọi các đường dữ liệu của chính trang Trends TỪ BÊN TRONG trang đó (cùng
+    // nguồn gốc, đi bằng phiên của tài khoản). Trả về chữ thô.
+    async function mo(url, { thoiCho = 30000 } = {}) {
+      if (win.isDestroyed()) throw new Error('Trình đọc đã đóng')
+      try {
+        await Promise.race([
+          wc.loadURL(url),
+          new Promise((_, loi) => setTimeout(() => loi(new Error('quá thời gian tải trang')), thoiCho))
+        ])
+      } catch (e) {
+        if (!/ERR_ABORTED|\(-3\)/.test(String(e.message))) throw e
+      }
+      return wc.getURL()
+    }
+
+    async function goiTrongTrang(url) {
+      if (win.isDestroyed()) throw new Error('Trình đọc đã đóng')
+      const kq = JSON.parse(await wc.executeJavaScript(scriptGoiTrongTrang(url)))
+      if (kq.loi) throw new Error(kq.loi)
+      if (kq.ma === 429) throw new Error('Google Trends tạm chặn vì gọi nhiều (429) — đợi 10–15 phút, hoặc chọn tài khoản đã đăng nhập')
+      if (kq.ma === 401) throw new Error('Google Trends từ chối token (401)')
+      if (kq.ma >= 400) throw new Error('Google Trends trả mã ' + kq.ma)
+      return kq.chu
+    }
+
+    return { doc, dong, mo, goiTrongTrang, urlHienTai: () => (win.isDestroyed() ? '' : wc.getURL()) }
   }
 
   async function xoaPhien(taiKhoanId) {
@@ -305,4 +342,4 @@ function taoQuanLy({ electron, cuaSo, nhatKy = { tin() {}, loi() {} }, baoSuKien
   }
 }
 
-module.exports = { tenPhanVung, taoIdTaiKhoan, duocPhepMo, taoQuanLy, scriptDocTrang }
+module.exports = { tenPhanVung, taoIdTaiKhoan, duocPhepMo, taoQuanLy, scriptDocTrang, scriptGoiTrongTrang }

@@ -1604,6 +1604,14 @@ function veTaiKhoan() {
     selRadar.value = ds.some((t) => t.id === cuRadar) ? cuRadar : (ds[0] ? ds[0].id : '')
   }
 
+  const selTk = $('#chon-tai-khoan-tu-khoa')
+  if (selTk) {
+    const cuTk = selTk.value
+    selTk.innerHTML = '<option value="">— không đăng nhập —</option>' +
+      ds.map((t) => `<option value="${thoat(t.id)}">${thoat(t.ten)}</option>`).join('')
+    selTk.value = ds.some((t) => t.id === cuTk) ? cuTk : (ds[0] ? ds[0].id : '')
+  }
+
   const sel = $('#chon-tai-khoan-cookie')
   const cu = sel.value
   sel.innerHTML = '<option value="">— không dùng cookie —</option>' +
@@ -2264,7 +2272,9 @@ $$('.tab-de-xuat').forEach((t) => {
     $$('.tab-de-xuat').forEach((x) => x.classList.toggle('tab-de-xuat-chon', x === t))
     $('#khoi-radar').hidden = t.dataset.tab !== 'radar'
     $('#khoi-hot').hidden = t.dataset.tab !== 'hot'
+    $('#khoi-tu-khoa').hidden = t.dataset.tab !== 'tu-khoa'
     if (t.dataset.tab === 'hot') capNhatUoc72h()
+    if (t.dataset.tab === 'tu-khoa') napCaiDatTuKhoa()
   }
 })
 
@@ -2356,6 +2366,205 @@ $('#nut-chay-radar').onclick = async () => {
   }
 }
 $('#nut-tai-thumb-radar').onclick = () => taiThumbCuaBang($('#bang-radar'))
+
+// --- Từ khóa hot (chấm 0–100) ---------------------------------------------
+// Tinh chỉnh nằm ngay trong mục; bấm Tra cứu là lưu vào cài đặt (khoá tuKhoaHot).
+let bangTuKhoa = []
+let locTuKhoa = 'tat-ca'
+let daNapCaiDatTuKhoa = false
+
+async function napCaiDatTuKhoa(epNap = false) {
+  if (daNapCaiDatTuKhoa && !epNap) return
+  const cd = await window.api.caiDatTuKhoaHot()
+  $('#tk-geo').value = cd.geo || 'US'
+  $('#tk-thoi-gian').value = cd.thoiGian || '90-ngay'
+  $('#tk-so-tu-khoa').value = cd.soTuKhoa
+  $('#tk-so-tu-toi-thieu').value = cd.soTuToiThieu
+  $('#tk-tu-loai-tru').value = cd.tuLoaiTru || ''
+  $('#tk-ts-nhu-cau').value = cd.trongSo.nhuCau
+  $('#tk-ts-xu-huong').value = cd.trongSo.xuHuong
+  $('#tk-ts-co-hoi').value = cd.trongSo.coHoi
+  $('#tk-mo-rong-az').checked = !!cd.moRongAZ
+  $('#tk-chua-linh-vuc').checked = !!cd.batBuocChuaLinhVuc
+  $('#tk-dung-trends').checked = !!cd.dungTrends
+  $('#tk-dung-trang-yt').checked = !!cd.dungTrangYouTube
+  $('#tk-dung-api').checked = !!cd.dungApi && !!cd.coKhoaApi
+  $('#tk-dung-api').disabled = !cd.coKhoaApi
+  $('#tk-dung-api').parentElement.title = cd.coKhoaApi ? '' : 'Chưa có khoá YouTube API (Cài đặt → Khoá API) nên tắt mục này.'
+  daNapCaiDatTuKhoa = true
+}
+
+function soTrongKhoang(o, tu, den, macDinh) {
+  const n = Number(o.value)
+  return Number.isFinite(n) && o.value !== '' ? Math.min(den, Math.max(tu, Math.round(n))) : macDinh
+}
+
+function docCaiDatTuKhoa() {
+  return {
+    geo: ($('#tk-geo').value.trim() || 'US').toUpperCase().slice(0, 2),
+    thoiGian: $('#tk-thoi-gian').value,
+    soTuKhoa: soTrongKhoang($('#tk-so-tu-khoa'), 5, 50, 20),
+    soTuToiThieu: soTrongKhoang($('#tk-so-tu-toi-thieu'), 1, 6, 2),
+    tuLoaiTru: $('#tk-tu-loai-tru').value,
+    moRongAZ: $('#tk-mo-rong-az').checked,
+    batBuocChuaLinhVuc: $('#tk-chua-linh-vuc').checked,
+    dungTrends: $('#tk-dung-trends').checked,
+    dungTrangYouTube: $('#tk-dung-trang-yt').checked,
+    dungApi: $('#tk-dung-api').checked && !$('#tk-dung-api').disabled,
+    trongSo: {
+      nhuCau: soTrongKhoang($('#tk-ts-nhu-cau'), 0, 100, 35),
+      xuHuong: soTrongKhoang($('#tk-ts-xu-huong'), 0, 100, 35),
+      coHoi: soTrongKhoang($('#tk-ts-co-hoi'), 0, 100, 30)
+    }
+  }
+}
+
+// Đường xu hướng nhỏ (một màu, nét 2px). Chuỗi 0–100 của Trends.
+function veDuongXuHuong(chuoi) {
+  const d = (chuoi || []).filter((x) => Number.isFinite(x))
+  if (d.length < 2) return ''
+  const r = 64; const c = 22
+  const lon = Math.max(1, ...d)
+  const diem = d.map((v, i) => `${((i / (d.length - 1)) * (r - 2) + 1).toFixed(1)},${(c - 2 - (v / lon) * (c - 4)).toFixed(1)}`)
+  const cuoi = diem[diem.length - 1].split(',')
+  return `<svg class="duong-xu-huong" width="${r}" height="${c}" viewBox="0 0 ${r} ${c}" aria-hidden="true">` +
+    `<polyline points="${diem.join(' ')}" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` +
+    `<circle cx="${cuoi[0]}" cy="${cuoi[1]}" r="2.5" fill="currentColor"/></svg>`
+}
+
+function lopNhanTuKhoa(nhan) {
+  return { 'RẤT HOT': 'nhan-no-view', HOT: 'nhan-tot', 'KHÁ': 'nhan-kha' }[nhan] || 'nhan-thuong'
+}
+
+function oDiemPhu(v, tieuDe) {
+  if (v == null) return `<td class="so-tk mo" title="${thoat(tieuDe)}: không đủ dữ liệu — không tính vào tổng">—</td>`
+  return `<td class="so-tk" title="${thoat(tieuDe)}: ${v}/100">${v}</td>`
+}
+
+function soGon(n) {
+  if (!n) return '—'
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace('.', ',') + ' tr'
+  if (n >= 1e4) return Math.round(n / 1e3) + ' N'
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace('.', ',').replace(',0', '') + ' N'
+  return String(n)
+}
+
+function locDongTuKhoa() {
+  if (locTuKhoa === 'hot') return bangTuKhoa.filter((d) => d.diem >= 65)
+  if (locTuKhoa === 'trend') return bangTuKhoa.filter((d) => d.dangTrend)
+  return bangTuKhoa
+}
+
+function veBangTuKhoa() {
+  const bang = $('#bang-tu-khoa')
+  const ds = locDongTuKhoa()
+  if (!ds.length) {
+    bang.innerHTML = '<tr><td class="ghi-chu">Không có từ khóa nào khớp bộ lọc này.</td></tr>'
+    return
+  }
+  const dau = '<thead><tr><th>#</th><th>Từ khóa</th><th>Điểm</th><th>Nhãn</th><th title="Người xem có tìm không">Nhu cầu</th>' +
+    '<th title="Đang lên hay xuống">Xu hướng</th><th title="Video mới về từ khóa này có ăn view không">Cơ hội</th>' +
+    '<th title="View trung vị của top video đăng trong tháng">View TV tháng</th><th></th></tr></thead>'
+  const than = ds.map((d) => {
+    const hang = bangTuKhoa.indexOf(d) + 1
+    const huyHieu = [
+      d.laHatGiong ? '<span class="huy-hieu huy-hieu-cam" title="Chính từ khóa lĩnh vực anh nhập">hạt giống</span>' : '',
+      d.breakout ? '<span class="huy-hieu huy-hieu-tim" title="Google Trends ghi Breakout — tăng đột biến">BREAKOUT</span>' : '',
+      ...(d.nguon || []).filter((n) => n !== 'lĩnh vực anh nhập').slice(0, 2).map((n) => `<span class="huy-hieu huy-hieu-ngoc">${thoat(n)}</span>`)
+    ].join('')
+    const videoTop = (d.videoTop || []).map((v) => `• ${v.tieuDe} (${soGon(v.viewUoc)} view, ${v.ngayChu || ''})`).join('\n')
+    const trend = d.dangTrend ? ' <span class="nhan-video nhan-trend">ĐANG TREND</span>' : ''
+    const tieuDeXh = d.xuHuong == null ? 'Xu hướng: không đủ dữ liệu' : `Xu hướng ${d.xuHuong}/100 — ${d.nguonXuHuong || ''}`
+    return `<tr>
+      <td class="mo">${hang}</td>
+      <td class="o-tu-khoa"><b>${thoat(d.tuKhoa)}</b><div class="hang-huy-hieu">${huyHieu}</div></td>
+      <td class="o-diem-tk"><div class="thanh-diem" title="Tổng ${d.diem}/100"><div class="thanh-diem-day" style="width:${d.diem}%"></div></div><b class="so-diem">${d.diem}</b></td>
+      <td><div class="o-nhan-tk"><span class="nhan-video ${lopNhanTuKhoa(d.nhan)}">${thoat(d.nhan)}</span>${trend}</div></td>
+      ${oDiemPhu(d.nhuCau, 'Nhu cầu')}
+      <td class="o-xu-huong" title="${thoat(tieuDeXh)}">${veDuongXuHuong(d.chuoi)}<span class="so-tk">${d.xuHuong == null ? '—' : d.xuHuong}</span></td>
+      ${oDiemPhu(d.coHoi, 'Cơ hội')}
+      <td class="so-tk" title="${thoat(videoTop || 'Chưa đọc trang tìm kiếm YouTube')}">${soGon(d.viewTrungVi)}${d.soVideoThang ? `<div class="mo">${d.soVideoThang} video</div>` : ''}</td>
+      <td class="o-nut-tk"><button class="nut nut-phu nut-nho" data-tim="${thoat(d.tuKhoa)}" title="Đưa từ khóa này sang màn Ý tưởng để tìm video">Tìm video</button>
+        <button class="nut nut-phu nut-nho" data-chep="${thoat(d.tuKhoa)}">Chép</button></td>
+    </tr>`
+  }).join('')
+  bang.innerHTML = dau + '<tbody>' + than + '</tbody>'
+  bang.querySelectorAll('[data-tim]').forEach((b) => {
+    b.onclick = () => {
+      $('#nhap-tu-khoa').value = b.dataset.tim
+      moMan('y-tuong')
+      $('#nhap-tu-khoa').focus()
+    }
+  })
+  bang.querySelectorAll('[data-chep]').forEach((b) => {
+    b.onclick = async () => {
+      try { await navigator.clipboard.writeText(b.dataset.chep); b.textContent = 'Đã chép' } catch (_) { b.textContent = 'Lỗi chép' }
+      setTimeout(() => { b.textContent = 'Chép' }, 1500)
+    }
+  })
+}
+
+function hienKetQuaTuKhoa(kq) {
+  bangTuKhoa = kq.dong || []
+  locTuKhoa = 'tat-ca'
+  $$('#loc-tu-khoa .chip').forEach((x) => x.classList.toggle('chip-chon', x.dataset.loc === 'tat-ca'))
+  veBangTuKhoa()
+  $('#the-ket-qua-tu-khoa').hidden = false
+  const soHot = bangTuKhoa.filter((d) => d.diem >= 65).length
+  const soTrend = bangTuKhoa.filter((d) => d.dangTrend).length
+  const trends = kq.coTrends ? 'có Google Trends' : 'KHÔNG có Google Trends' + (kq.loiTrends ? ` (${kq.loiTrends})` : '')
+  $('#tom-tat-tu-khoa').textContent =
+    `${bangTuKhoa.length} từ khóa (lọc từ ${kq.soUngVien || 0} ứng viên) · ${soHot} HOT trở lên · ${soTrend} đang trend · ${trends}` +
+    [kq.ghiChuApi, ...(kq.canhBao || [])].filter(Boolean).map((x) => ' · ' + x).join('')
+}
+
+$$('#loc-tu-khoa .chip').forEach((c) => {
+  c.onclick = () => {
+    locTuKhoa = c.dataset.loc
+    $$('#loc-tu-khoa .chip').forEach((x) => x.classList.toggle('chip-chon', x === c))
+    veBangTuKhoa()
+  }
+})
+
+$('#nut-tra-tu-khoa').onclick = async () => {
+  const lv = linhVuc()
+  if (!lv) { await baoTin('Nhập lĩnh vực (tiếng Anh) ở ô "Lĩnh vực của anh" phía trên, ví dụ: bible stories, old testament.'); return }
+  const caiDatTk = docCaiDatTuKhoa()
+  const tong = caiDatTk.trongSo.nhuCau + caiDatTk.trongSo.xuHuong + caiDatTk.trongSo.coHoi
+  if (!tong) { await baoTin('Ba trọng số đều bằng 0 — đặt ít nhất một trọng số lớn hơn 0.'); return }
+  $('#nut-tra-tu-khoa').disabled = true
+  $('#ghi-chu-tu-khoa').textContent = 'Đang tra cứu — ' + (caiDatTk.dungTrends ? 'có Google Trends nên mất khoảng 2–4 phút…' : 'khoảng 1 phút…')
+  $('#ghi-chu-tu-khoa').className = 'ghi-chu'
+  datTienDo({ phanTram: 1, viec: 'Bắt đầu tra cứu từ khóa' })
+  try {
+    const kq = await window.api.traTuKhoaHot({ linhVuc: lv, caiDatTk, taiKhoanId: $('#chon-tai-khoan-tu-khoa').value })
+    if (!kq.ok) {
+      $('#ghi-chu-tu-khoa').textContent = kq.loi
+      $('#ghi-chu-tu-khoa').className = 'ghi-chu ghi-chu-vang'
+      await baoTin(kq.loi)
+      return
+    }
+    hienKetQuaTuKhoa(kq)
+    $('#ghi-chu-tu-khoa').textContent = kq.dong.length ? 'Xong.' : 'Không ra từ khóa nào — thử bỏ tick "Chỉ giữ từ khóa có chứa…" hoặc giảm số từ tối thiểu.'
+    $('#ghi-chu-tu-khoa').className = kq.dong.length ? 'ghi-chu ghi-chu-xanh' : 'ghi-chu ghi-chu-vang'
+    $('#the-ket-qua-tu-khoa').scrollIntoView({ behavior: 'smooth', block: 'start' })
+  } catch (loi) {
+    datTienDo({ phanTram: 100, viec: 'Tra cứu từ khóa lỗi', chiTiet: loi.message, soLoi: 1, trangThai: 'loi' })
+    await baoTin('Lỗi: ' + loi.message)
+  } finally {
+    $('#nut-tra-tu-khoa').disabled = false
+  }
+}
+$('#nut-dung-tu-khoa').onclick = async () => {
+  await window.api.dungTuKhoaHot()
+  $('#ghi-chu-tu-khoa').textContent = 'Đã yêu cầu dừng — tool dừng sau bước đang chạy.'
+}
+$('#nut-xuat-tu-khoa').onclick = async () => {
+  const kq = await window.api.xuatTuKhoaHot(locDongTuKhoa(), linhVuc())
+  if (kq.ok) await baoTin('Đã xuất: ' + kq.duongDan)
+  else if (!kq.huy) await baoTin(kq.loi)
+}
+window.smokeHienTuKhoa = (kq) => hienKetQuaTuKhoa(kq)
 
 // --- Đang hot (API) --------------------------------------------------------
 function locDongHot() {
@@ -2895,7 +3104,18 @@ window.smokeDuLieuMau = async function () {
   $('#tom-tat-kich-ban').innerHTML = '<span class="huy-hieu-xong">✔ kich-ban-v3.md</span> · 11.040 từ · khoảng 73,6 phút đọc · 409 cảnh · đạt 100% mục tiêu · dự án có 3 phiên bản'
   $('#uoc-kich-ban-api').innerHTML = 'Mô hình: <b>Claude Opus 5.5 (khuyến nghị — viết hay nhất trong mức giá vừa)</b> · 9 lượt gọi · ước tính <b>~$0.61</b> (có thể tới ~$1.22 vì phần "suy nghĩ" của mô hình cũng tính tiền)'
   veThongKeCanh({ soCanh: 409, tongTu: 11040, tuTrungBinh: 27, tongPhut: 61, canhQuaNgan: 2, canhQuaDai: 1, soCanhNgan: [57, 212], soCanhDai: [130], nguongNgan: 12, nguongDai: 45 })
-  return { soDong: dong.length, daChon: videoDaChon.length, canhFootage: keHoachFt.canh.length }
+  // 0.7.0: bảng từ khóa hot mẫu (có đường xu hướng, Breakout, cột thiếu dữ liệu)
+  const len = (a, b) => Array.from({ length: 13 }, (_, i) => Math.round(a + (b - a) * (i / 12) + ((i * 7) % 5)))
+  hienKetQuaTuKhoa({
+    dong: [
+      { tuKhoa: 'bible stories end times', diem: 86, nhuCau: 74, xuHuong: 98, coHoi: 81, nhan: 'RẤT HOT', dangTrend: true, breakout: true, laHatGiong: false, nguon: ['Trends đang lên', 'gợi ý YouTube'], nguonXuHuong: 'Trends: Breakout', chuoi: len(8, 90), viewTrungVi: 184000, soVideoThang: 10, videoTop: [{ tieuDe: 'The End Times Explained', viewUoc: 912000, ngayChu: '6 days ago' }] },
+      { tuKhoa: 'bible stories for sleep', diem: 72, nhuCau: 81, xuHuong: 71, coHoi: 62, nhan: 'HOT', dangTrend: true, breakout: false, laHatGiong: false, nguon: ['gợi ý YouTube'], nguonXuHuong: 'Google Trends', chuoi: len(40, 70), viewTrungVi: 41000, soVideoThang: 10, videoTop: [] },
+      { tuKhoa: 'bible stories', diem: 58, nhuCau: 100, xuHuong: 47, coHoi: 30, nhan: 'KHÁ', dangTrend: false, breakout: false, laHatGiong: true, nguon: ['lĩnh vực anh nhập'], nguonXuHuong: 'Google Trends', chuoi: len(60, 55), viewTrungVi: 3200, soVideoThang: 10, videoTop: [] },
+      { tuKhoa: 'old testament kings explained', diem: 41, nhuCau: 38, xuHuong: null, coHoi: 44, nhan: 'THƯỜNG', dangTrend: false, breakout: false, laHatGiong: false, nguon: ['gợi ý YouTube'], nguonXuHuong: '', chuoi: [], viewTrungVi: 9800, soVideoThang: 7, videoTop: [] }
+    ],
+    soUngVien: 63, coTrends: true, canhBao: [], ghiChuApi: 'Đã lấy sub kênh bằng API cho 212 video.'
+  })
+  return { soDong: dong.length, daChon: videoDaChon.length, canhFootage: keHoachFt.canh.length, tuKhoa: bangTuKhoa.length }
 }
 
 // ---------------------------------------------------------------------------
@@ -2966,7 +3186,7 @@ window.smokeKiemCach2 = async function () {
 // Đây là loại lỗi im lặng nhất: giao diện ghi tên khoá khác với tên mà bên kia
 // đọc, không ai ném lỗi, chỉ là cài đặt "bấm xong không có tác dụng gì".
 // ---------------------------------------------------------------------------
-const KHOA_PHUC_TAP = ['khoaApi', 'kenhTheoDoi', 'khoSkill', 'taiKhoan', 'khoNhanVat', 'khoBoiCanh', 'oPrompt']
+const KHOA_PHUC_TAP = ['khoaApi', 'kenhTheoDoi', 'khoSkill', 'taiKhoan', 'khoNhanVat', 'khoBoiCanh', 'oPrompt', 'tuKhoaHot']
 
 window.smokeKiemKhoaCaiDat = function () {
   if (!caiDatHienTai) return ['chưa tải được cài đặt']

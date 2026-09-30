@@ -10,7 +10,7 @@ const path = require('path')
 // ứng không" — thiếu danh sách này là smoke báo đỏ oan.
 const KHOA_PHUC_TAP = [
   'khoaApi', 'kenhTheoDoi', 'khoSkill', 'taiKhoan',
-  'khoNhanVat', 'khoBoiCanh', 'oPrompt'
+  'khoNhanVat', 'khoBoiCanh', 'oPrompt', 'tuKhoaHot'
 ]
 
 const CAI_DAT_MAC_DINH = {
@@ -81,7 +81,10 @@ const CAI_DAT_MAC_DINH = {
 
   // 0.6.0 — Viết kịch bản tự động bằng Claude API (trả tiền riêng theo token)
   khoaClaude: '',
-  moHinhClaude: 'claude-opus-5-5'
+  moHinhClaude: 'claude-opus-5-5',
+
+  // 0.7.0 — tinh chỉnh mục Từ khóa hot (lưu ngay trong mục, xem chay-tu-khoa-hot.js)
+  tuKhoaHot: {}
 }
 
 function docJSON(duongDan, macDinh) {

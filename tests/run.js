@@ -2686,6 +2686,259 @@ async function chay() {
   })
 
   // =========================================================================
+  nhom('48. Từ khóa hot (0.7.0) — Trends + gợi ý + trang tìm kiếm, chấm 0–100')
+  const tkh = require('../src/tu-khoa-hot')
+  const { chayTuKhoaHot, CAI_DAT_MAC_DINH: TKH_MD } = require('../src/chay-tu-khoa-hot')
+
+  await kiem('URL Trends đúng từng ký tự (gprop=youtube, property youtube, time đúng mã)', () => {
+    assert.strictEqual(tkh.urlTrangTrends('bible stories', { geo: 'US', thoiGian: '90-ngay' }),
+      'https://trends.google.com/trends/explore?date=today%203-m&geo=US&gprop=youtube&q=bible%20stories&hl=en-US')
+    const yc = tkh.yeuCauExplore(['a', 'b', 'c', 'd', 'e', 'f'], { geo: 'US', thoiGian: '7-ngay' })
+    assert.strictEqual(yc.comparisonItem.length, 5, 'Trends so sánh tối đa 5 từ khóa')
+    assert.deepStrictEqual(yc.comparisonItem[0], { keyword: 'a', geo: 'US', time: 'now 7-d' })
+    assert.strictEqual(yc.property, 'youtube')
+    assert.strictEqual(yc.category, 0)
+    const u = tkh.urlExplore(['a'], { geo: 'US', thoiGian: '12-thang' })
+    assert.ok(u.startsWith('https://trends.google.com/trends/api/explore?hl=en-US&tz=0&req='))
+    assert.deepStrictEqual(JSON.parse(decodeURIComponent(u.split('req=')[1])).comparisonItem[0].time, 'today 12-m')
+    const w = tkh.urlWidget('multiline', { request: { x: 1, y: 'a b' }, token: 'T/+=' })
+    assert.strictEqual(w, 'https://trends.google.com/trends/api/widgetdata/multiline?hl=en-US&tz=0&req=%7B%22x%22%3A1%2C%22y%22%3A%22a%20b%22%7D&token=T%2F%2B%3D')
+    for (const k of Object.keys(TKH_MD)) if (k === 'thoiGian') assert.ok(tkh.THOI_GIAN_TRENDS[TKH_MD[k]])
+  })
+
+  await kiem('bóc ")]}\'," đầu trả lời Trends; trang chặn (HTML) → lỗi tiếng Việt', () => {
+    assert.deepStrictEqual(tkh.bocTrends(")]}',\n{\"a\":1}"), { a: 1 })
+    assert.throws(() => tkh.bocTrends('<html>sorry</html>'), /không phải JSON/)
+    const ex = tkh.docExplore({ widgets: [{ id: 'TIMESERIES', token: 't1' }, { id: 'GEO_MAP' }, { id: 'RELATED_QUERIES', token: 't2' }] })
+    assert.strictEqual(ex.thoiGian.token, 't1')
+    assert.strictEqual(ex.lienQuan.length, 1)
+  })
+
+  await kiem('multiline bỏ điểm isPartial; relatedsearches tách top / rising và nhận "Breakout"', () => {
+    const c = tkh.docMultiline({ default: { timelineData: [{ value: [10, 20] }, { value: [30, 40] }, { value: [99, 1], isPartial: true }] } }, 2)
+    assert.deepStrictEqual(c, [[10, 30], [20, 40]])
+    const lq = tkh.docLienQuan({ default: { rankedList: [
+      { rankedKeyword: [{ query: 'bible stories for kids', value: 100, formattedValue: '100' }] },
+      { rankedKeyword: [{ query: 'book of enoch', value: 5000, formattedValue: 'Breakout' }, { query: 'x', value: 250, formattedValue: '+250%' }] }
+    ] } })
+    assert.strictEqual(lq.top[0].q, 'bible stories for kids')
+    assert.strictEqual(lq.rising[0].breakout, true)
+    assert.strictEqual(lq.rising[1].breakout, false)
+  })
+
+  await kiem('công thức điểm: xu hướng đứng yên 50, ×2 ≈ 96→kẹp, giảm → dưới 50; view log; tổng bỏ phần thiếu', () => {
+    assert.strictEqual(tkh.diemXuHuongChuoi([10, 10, 10, 10, 10, 10, 10, 10]), 50)
+    assert.strictEqual(tkh.diemXuHuongChuoi([10, 10, 10, 10, 10, 10, 20, 20]), 96)
+    assert.ok(tkh.diemXuHuongChuoi([20, 20, 20, 20, 20, 20, 10, 10]) < 10)
+    assert.strictEqual(tkh.diemXuHuongChuoi([1, 2]), null, 'quá ít điểm thì không đoán')
+    assert.strictEqual(tkh.diemView(1000), 20)
+    assert.strictEqual(tkh.diemView(1e6), 80)
+    assert.strictEqual(tkh.diemView(0), 0)
+    assert.strictEqual(tkh.diemTong({ nhuCau: 80, xuHuong: null, coHoi: 40 }, { nhuCau: 35, xuHuong: 35, coHoi: 30 }), Math.round((80 * 35 + 40 * 30) / 65))
+    assert.strictEqual(tkh.diemTong({ nhuCau: 90, xuHuong: 10, coHoi: 10 }, { nhuCau: 100, xuHuong: 0, coHoi: 0 }), 90, 'trọng số 0 = bỏ hẳn thành phần')
+    assert.deepStrictEqual(tkh.nhanTuKhoa(80, 70), { nhan: 'RẤT HOT', dangTrend: true })
+    assert.deepStrictEqual(tkh.nhanTuKhoa(64, 69), { nhan: 'KHÁ', dangTrend: false })
+    assert.strictEqual(tkh.nhanTuKhoa(49, null).nhan, 'THƯỜNG')
+    assert.strictEqual(tkh.docTuoiNgay('3 days ago'), 3)
+    assert.strictEqual(tkh.docTuoiNgay('Streamed 2 weeks ago'), 14)
+    assert.strictEqual(tkh.docTuoiNgay(''), null)
+  })
+
+  await kiem('Cơ hội: trừ khi view dồn 1 video viral; cộng khi kênh nhỏ thắng; không video → 0', () => {
+    const deu = Array.from({ length: 10 }, () => ({ viewUoc: 50000 }))
+    const lech = [{ viewUoc: 5e6 }, ...Array.from({ length: 9 }, () => ({ viewUoc: 20000 }))]
+    const a = tkh.diemCoHoi(deu)
+    const b = tkh.diemCoHoi(lech)
+    assert.strictEqual(a.viewTrungVi, 50000)
+    assert.ok(b.diem < a.diem, 'một video viral kéo không được coi là cơ hội tốt')
+    const kenhNho = deu.map((v, i) => ({ ...v, subKenh: i < 5 ? 20000 : 5e6 }))
+    const c = tkh.diemCoHoi(kenhNho)
+    assert.strictEqual(c.tyLeKenhNhoThang, 0.5)
+    assert.ok(c.diem > a.diem)
+    assert.deepStrictEqual(tkh.diemCoHoi([]), { diem: 0, viewTrungVi: 0, soVideo: 0, tyLeKenhNhoThang: null })
+  })
+
+  await kiem('gom ứng viên: loại trừ, số từ tối thiểu, bắt buộc chứa lĩnh vực (số ít/nhiều), breakout lên đầu', () => {
+    const ds = tkh.gomUngVien({
+      hatGiong: ['bible stories'],
+      goiY: [{ tienTo: 'bible stories', ds: ['bible stories for kids', 'bible story of david', 'bible stories song', 'cooking pasta'] },
+        { tienTo: 'bible stories a', ds: ['bible stories for kids', 'bible stories adam and eve'] }],
+      lienQuan: [{ hatGiong: 'bible stories', top: [], rising: [{ q: 'book of enoch bible', v: 5000, breakout: true }] }]
+    }, { soTuToiThieu: 2, tuLoaiTru: ['song'], batBuocChuaLinhVuc: true })
+    const tu = ds.map((d) => d.tuKhoa)
+    assert.strictEqual(tu[0], 'book of enoch bible', 'breakout phải đứng đầu')
+    assert.ok(tu.includes('bible story of david'), '"story" khớp "stories"? — khớp qua "bible"')
+    assert.ok(!tu.includes('bible stories song'), 'từ loại trừ')
+    assert.ok(!tu.includes('cooking pasta'), 'không chứa từ lĩnh vực')
+    const kids = ds.find((d) => d.tuKhoa === 'bible stories for kids')
+    assert.strictEqual(kids.soTienTo, 2)
+    assert.strictEqual(kids.viTriTot, 1)
+    assert.ok(kids.diemGoiY > ds.find((d) => d.tuKhoa === 'bible stories adam and eve').diemGoiY)
+    assert.strictEqual(tkh.cacTienTo('x', { moRongAZ: true }).length, 27)
+    assert.deepStrictEqual(tkh.cacTienTo('x', { moRongAZ: false }), ['x'])
+  })
+
+  await kiem('lô Trends có mỏ neo: mỗi lô ≤ 5, quy chéo về cùng thang đúng tỉ lệ', () => {
+    const lo = tkh.chiaLoTrends(['neo', 'a', 'b', 'c', 'd', 'e', 'f'], 'neo')
+    assert.deepStrictEqual(lo, [['neo', 'a', 'b', 'c', 'd'], ['neo', 'e', 'f']])
+    // Lô 2: Trends chuẩn hoá riêng nên mỏ neo ra 20 thay vì 40 → e thật = 30 × 2 = 60 (theo thang lô 1).
+    const muc = tkh.quyVeMotThang([
+      { tuKhoa: ['neo', 'a'], trungBinh: [40, 80], tbMoNeo: 40 },
+      { tuKhoa: ['neo', 'e'], trungBinh: [20, 30], tbMoNeo: 20 }
+    ])
+    // neo chung = 30 → hệ số lô 1 = 0,75, lô 2 = 1,5 → a = 60, e = 45, neo = 30 → chia max 60
+    assert.deepStrictEqual(muc, { neo: 50, a: 100, e: 75 })
+    assert.ok(muc.e / muc.a === 0.75, 'tỉ lệ e/a = 60/80 phải giữ nguyên sau quy đổi')
+  })
+
+  // --- Chạy cả chuỗi bằng dữ liệu giả ---
+  const trangTimGia = (views) => ({ khoi: { contents: views.map((v, i) => ({ videoRenderer: {
+    videoId: ('vid' + i + 'xxxxxxxxxxx').slice(0, 11), title: { runs: [{ text: 'Video ' + i }] },
+    viewCountText: { simpleText: v + ' views' }, publishedTimeText: { simpleText: (i + 1) + ' days ago' }, lengthText: { simpleText: '12:30' },
+    longBylineText: { runs: [{ text: 'Kênh ' + i, navigationEndpoint: { browseEndpoint: { browseId: 'UC' + i } } }] }
+  } })) } })
+  const goiYGia = async (chuoi) => chuoi === 'bible stories'
+    ? ['bible stories for kids', 'bible stories explained', 'bible stories song']
+    : (chuoi.endsWith(' a') ? ['bible stories adam and eve'] : [])
+  const taoTrendsGia = ({ loi429 = false } = {}) => {
+    const nhat = []
+    return {
+      nhat,
+      mo: async (url) => { nhat.push('MO ' + url) },
+      goi: async (url) => {
+        nhat.push(url)
+        if (loi429) throw new Error('Google Trends giới hạn tần suất (429)')
+        if (url.includes('/api/explore')) {
+          const req = JSON.parse(decodeURIComponent(url.split('req=')[1].split('&')[0]))
+          const n = req.comparisonItem.length
+          return ")]}'\n" + JSON.stringify({ widgets: [
+            { id: 'TIMESERIES', token: 'tok-t', request: { n } },
+            { id: 'RELATED_QUERIES', token: 'tok-r', request: { kw: req.comparisonItem[0].keyword } }] })
+        }
+        if (url.includes('/widgetdata/relatedsearches')) {
+          return ")]}',\n" + JSON.stringify({ default: { rankedList: [{ rankedKeyword: [] },
+            { rankedKeyword: [{ query: 'bible stories end times', value: 9000, formattedValue: 'Breakout' }] }] } })
+        }
+        if (url.includes('/widgetdata/multiline')) {
+          const n = JSON.parse(decodeURIComponent(url.split('req=')[1].split('&')[0])).n
+          // Từ khóa thứ i (i ≥ 1) tăng dần về cuối; mỏ neo đi ngang.
+          const tl = Array.from({ length: 12 }, (_, t) => ({ value: Array.from({ length: n }, (_, i) => i === 0 ? 40 : (t < 9 ? 20 : 20 + 10 * i)) }))
+          return ")]}'\n" + JSON.stringify({ default: { timelineData: tl } })
+        }
+        throw new Error('URL lạ ' + url)
+      }
+    }
+  }
+
+  await kiem('chạy đủ chuỗi có Trends: gom từ khóa, chấm 0–100, Breakout ≥ 95, sắp theo điểm, nguồn ghi rõ', async () => {
+    const tr = taoTrendsGia()
+    const tienDo = []
+    const kq = await chayTuKhoaHot({
+      linhVuc: 'bible stories',
+      caiDat: { soTuKhoa: 10, moRongAZ: true },
+      layGoiY: goiYGia,
+      trends: tr,
+      docTrangTim: async () => trangTimGia(['120K', '80K', '45K', '30K', '9K']),
+      ngu: async () => {},
+      baoTienDo: (t) => tienDo.push(t.phanTram)
+    })
+    assert.strictEqual(kq.coTrends, true)
+    assert.ok(tr.nhat[0].startsWith('MO https://trends.google.com/trends/explore?'), 'phải mở trang Trends trước khi gọi API')
+    const tu = kq.dong.map((d) => d.tuKhoa)
+    assert.ok(tu.includes('bible stories end times') && tu.includes('bible stories for kids') && tu.includes('bible stories'))
+    assert.ok(!tu.includes('bible stories song'), 'từ loại trừ mặc định')
+    for (const d of kq.dong) {
+      assert.ok(d.diem >= 0 && d.diem <= 100 && Number.isInteger(d.diem), d.tuKhoa + ' điểm ' + d.diem)
+      assert.ok(['RẤT HOT', 'HOT', 'KHÁ', 'THƯỜNG'].includes(d.nhan))
+    }
+    const bo = kq.dong.find((d) => d.tuKhoa === 'bible stories end times')
+    assert.ok(bo.breakout && bo.xuHuong >= 95 && bo.dangTrend && bo.nguonXuHuong === 'Trends: Breakout')
+    assert.ok(kq.dong.find((d) => d.tuKhoa === 'bible stories').laHatGiong)
+    assert.strictEqual(kq.dong.find((d) => d.tuKhoa === 'bible stories').nguonXuHuong, 'Google Trends')
+    assert.ok(kq.dong.every((d, i) => i === 0 || kq.dong[i - 1].diem >= d.diem), 'sắp giảm dần theo điểm')
+    assert.ok(kq.dong[0].chuoi.length === 12 && kq.dong[0].viewTrungVi === 45000)
+    assert.ok(tienDo.every((p, i) => i === 0 || p >= tienDo[i - 1]), 'thanh tiến độ không được lùi')
+    assert.deepStrictEqual(kq.canhBao, [])
+  })
+
+  await kiem('Trends 429 → vẫn chạy bằng gợi ý + trang YouTube, ghi rõ nguồn xu hướng và cảnh báo', async () => {
+    const kq = await chayTuKhoaHot({
+      linhVuc: 'bible stories',
+      caiDat: { soTuKhoa: 6, moRongAZ: false },
+      layGoiY: goiYGia,
+      trends: taoTrendsGia({ loi429: true }),
+      docTrangTim: async () => trangTimGia(['2M', '500K', '300K', '100K']),
+      ngu: async () => {}
+    })
+    assert.strictEqual(kq.coTrends, false)
+    assert.ok(/429/.test(kq.loiTrends))
+    assert.ok(kq.canhBao.some((c) => /Google Trends không dùng được/.test(c)))
+    assert.ok(kq.dong.length >= 2)
+    for (const d of kq.dong) {
+      assert.strictEqual(d.nguonXuHuong, 'ước từ video mới (không có Trends)')
+      assert.ok(Number.isFinite(d.xuHuong) && Number.isFinite(d.coHoi) && Number.isFinite(d.nhuCau))
+      assert.ok(d.xuHuong <= 90, 'ước không có Trends không được lên vùng Breakout (95–100)')
+    }
+    assert.ok(kq.dong.find((d) => d.laHatGiong).nhuCau >= 60, 'hạt giống có video 100K–2M phải có Nhu cầu cao, không bị kéo về 0')
+  })
+
+  await kiem('không Trends, không trang YouTube → chỉ gợi ý: không vỡ, cột thiếu để null (hiện "—")', async () => {
+    const kq = await chayTuKhoaHot({
+      linhVuc: 'bible stories', caiDat: { dungTrends: false, dungTrangYouTube: false, moRongAZ: false },
+      layGoiY: goiYGia, ngu: async () => {}
+    })
+    assert.ok(kq.dong.length >= 2)
+    assert.ok(kq.dong.every((d) => d.xuHuong === null && d.coHoi === null))
+    assert.ok(kq.dong.filter((d) => !d.laHatGiong).every((d) => d.diem === d.nhuCau && d.nhuCau > 0))
+    const hg = kq.dong.find((d) => d.laHatGiong)
+    assert.strictEqual(hg.nhuCau, null, 'hạt giống không có trong gợi ý của chính nó → "không có dữ liệu", không phải 0')
+  })
+
+  await kiem('API sub kênh ghép đúng: view thật thay view ước, tỉ lệ kênh nhỏ thắng có số', async () => {
+    const kq = await chayTuKhoaHot({
+      linhVuc: 'bible stories', caiDat: { dungTrends: false, moRongAZ: false, soTuKhoa: 2 },
+      layGoiY: goiYGia,
+      docTrangTim: async () => trangTimGia(['10K', '10K', '10K', '10K']),
+      soLieuApi: async (ids) => ({
+        video: ids.map((id, i) => ({ videoId: id, kenhId: 'UC' + i, views: 77777 })),
+        kenh: new Map(ids.map((_, i) => ['UC' + i, { subKenh: i % 2 ? 50000 : 2e6 }]))
+      }),
+      ngu: async () => {}
+    })
+    const d = kq.dong[0]
+    assert.strictEqual(d.viewTrungVi, 77777)
+    assert.strictEqual(d.tyLeKenhNhoThang, 0.5)
+    assert.ok(/Đã lấy sub kênh/.test(kq.ghiChuApi))
+  })
+
+  await kiem('bấm Dừng → ném "Đã dừng." (không chấm nửa vời); lĩnh vực trống → lỗi tiếng Việt', async () => {
+    let n = 0
+    await assert.rejects(chayTuKhoaHot({ linhVuc: 'bible stories', layGoiY: goiYGia, daHuy: () => ++n > 3, ngu: async () => {} }), /Đã dừng/)
+    await assert.rejects(chayTuKhoaHot({ linhVuc: '  ', layGoiY: goiYGia }), /Nhập lĩnh vực/)
+  })
+
+  await kiem('gọi trong trang chỉ nhận API Trends (không cho cửa sổ ẩn gọi URL tuỳ ý)', () => {
+    const s = trinhDuyet.scriptGoiTrongTrang('https://trends.google.com/trends/api/explore?x=1')
+    assert.ok(s.includes("credentials: 'include'") || s.includes('credentials:"include"') || /credentials/.test(s))
+    assert.throws(() => trinhDuyet.scriptGoiTrongTrang('https://evil.example.com/trends/api/'))
+    assert.throws(() => trinhDuyet.scriptGoiTrongTrang('https://www.google.com/search?q=1'))
+    assert.throws(() => trinhDuyet.scriptGoiTrongTrang('https://trends.google.com.evil.com/trends/api/x'))
+  })
+
+  await kiem('giao diện: đủ ô tinh chỉnh ngay trong mục, khoá cài đặt tuKhoaHot, phiên bản 0.7.0', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8')
+    for (const id of ['tk-geo', 'tk-thoi-gian', 'tk-so-tu-khoa', 'tk-so-tu-toi-thieu', 'tk-tu-loai-tru', 'tk-ts-nhu-cau', 'tk-ts-xu-huong',
+      'tk-ts-co-hoi', 'tk-mo-rong-az', 'tk-chua-linh-vuc', 'tk-dung-trends', 'tk-dung-trang-yt', 'tk-dung-api', 'nut-tra-tu-khoa', 'bang-tu-khoa']) {
+      assert.ok(html.includes(`id="${id}"`), 'thiếu #' + id)
+    }
+    const { CAI_DAT_MAC_DINH } = require('../src/store')
+    assert.deepStrictEqual(CAI_DAT_MAC_DINH.tuKhoaHot, {})
+    const pk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'))
+    assert.strictEqual(pk.version, '0.7.0')
+    assert.ok(/Từ khóa hot/.test(pk.build.releaseInfo.releaseNotes))
+  })
+
+  // =========================================================================
   console.log('\n' + '─'.repeat(58))
   console.log(`TẦNG 1: ${soQua} qua, ${soTruot.length} truột`)
   if (soTruot.length) {

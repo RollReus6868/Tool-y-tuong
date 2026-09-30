@@ -36,6 +36,7 @@ const nguonFt = require('./src/footage-nguon')
 const taiFt = require('./src/footage-tai')
 const { taiVeTep } = require('./src/goi-mang')
 const xuatVanBan = require('./src/xuat-van-ban')
+const { chayTuKhoaHot, CAI_DAT_MAC_DINH: TKH_MAC_DINH } = require('./src/chay-tu-khoa-hot')
 const promptJson = require('./src/prompt-json')
 const claudeApi = require('./src/claude-api')
 const { vietTuDong } = require('./src/kich-ban-tu-dong')
@@ -508,6 +509,109 @@ function dangKyIPC() {
       trinhDoc.dong()
       dangChayRadar = false
     }
+  })
+
+  // --- Đề xuất video: TỪ KHÓA HOT (0.7.0) -----------------------------------
+  // Gợi ý YouTube (miễn phí) + Google Trends "YouTube Search" đọc qua cửa sổ ẩn
+  // + trang tìm kiếm YouTube (miễn phí) + (tuỳ chọn) API lấy sub (~2 đơn vị/50 video).
+  let dangChayTuKhoa = false
+  let huyTuKhoa = false
+  ipcMain.handle('dexuat:dung-tu-khoa', () => { huyTuKhoa = true; return { ok: true } })
+  ipcMain.handle('dexuat:cai-dat-tu-khoa', () => {
+    const caiDat = kho.docCaiDat()
+    const cd = { ...TKH_MAC_DINH, ...(caiDat.tuKhoaHot || {}) }
+    cd.trongSo = { ...TKH_MAC_DINH.trongSo, ...((caiDat.tuKhoaHot || {}).trongSo || {}) }
+    return { ...cd, geo: cd.geo || caiDat.regionCode || 'US', coKhoaApi: (caiDat.khoaApi || []).length > 0 }
+  })
+  ipcMain.handle('dexuat:tu-khoa-hot', async (_su, { linhVuc = '', caiDatTk = {}, taiKhoanId = '' } = {}) => {
+    if (dangChayTuKhoa) return { ok: false, loi: 'Đang tra cứu rồi — chờ lượt này xong hoặc bấm Dừng.' }
+    // Lưu tinh chỉnh ngay trong mục (tệp cài đặt, khoá tuKhoaHot).
+    const caiDat = kho.docCaiDat()
+    const cd = { ...TKH_MAC_DINH, ...(caiDat.tuKhoaHot || {}), ...caiDatTk, geo: String(caiDatTk.geo || caiDat.regionCode || 'US').toUpperCase() }
+    kho.ghiCaiDat({ ...caiDat, tuKhoaHot: cd })
+
+    dangChayTuKhoa = true
+    huyTuKhoa = false
+    const trinhDoc = (cd.dungTrends || cd.dungTrangYouTube) ? quanLyDuyet.taoTrinhDoc(taiKhoanId) : null
+    // Trends và trang tìm kiếm YouTube dùng HAI cửa sổ ẩn riêng: trang Trends
+    // phải đứng yên để gọi dữ liệu từ bên trong nó.
+    const trinhDocTrends = cd.dungTrends ? quanLyDuyet.taoTrinhDoc(taiKhoanId) : null
+    nhatKy.tin(`Từ khóa hot: "${linhVuc}" · tài khoản ${taiKhoanId || 'khách'} · ${cd.soTuKhoa} từ khóa · Trends ${cd.dungTrends ? 'bật' : 'tắt'}`)
+    try {
+      let soLieuApi = null
+      if (cd.dungApi) {
+        soLieuApi = async (ids) => {
+          const can = Math.ceil(ids.length / 50) * 2
+          const { khach, loi } = taoKhachCoKhoa(can)
+          if (!khach) throw new Error(loi)
+          const video = await khach.soLieuVideo(ids)
+          const kenh = await khach.soLieuKenh(video.map((v) => v.kenhId))
+          return { video, kenh }
+        }
+      }
+      const kq = await chayTuKhoaHot({
+        linhVuc,
+        caiDat: cd,
+        layGoiY: (chuoi) => layGoiY(chuoi, { hl: 'en', gl: cd.geo.toLowerCase() }),
+        trends: trinhDocTrends ? {
+          mo: async (url) => {
+            const den = await trinhDocTrends.mo(url)
+            if (radar.laTrangChan(den) || /google\.com\/sorry/.test(den)) throw new Error('Google hỏi xác minh "không phải robot" — mở trends.google.com ở màn Trình duyệt xác minh bằng tay')
+          },
+          goi: (url) => trinhDocTrends.goiTrongTrang(url)
+        } : null,
+        docTrangTim: trinhDoc && cd.dungTrangYouTube ? async (url) => {
+          const kq = await trinhDoc.doc(url, { loai: 'tim' })
+          return radar.laTrangChan(kq.url) ? { chan: true } : kq
+        } : null,
+        soLieuApi,
+        baoTienDo: (t) => baoTienDo({ ...t, khu: 'dexuat' }),
+        daHuy: () => huyTuKhoa,
+        nhatKy
+      })
+      baoTienDo({
+        phanTram: 100, viec: 'Tra cứu từ khóa xong',
+        chiTiet: `${kq.dong.length} từ khóa · ${kq.dong.filter((d) => d.diem >= 65).length} HOT trở lên` + (kq.coTrends ? '' : ' · không có Trends'),
+        soLoi: kq.canhBao.length, trangThai: kq.canhBao.length ? 'loi' : 'xong', khu: 'dexuat'
+      })
+      nhatKy.tin(`Từ khóa hot xong: ${kq.dong.length} từ khóa, Trends ${kq.coTrends ? 'có' : 'KHÔNG'}. ${kq.ghiChuApi}`)
+      for (const c of kq.canhBao) nhatKy.canhBao('Từ khóa hot: ' + c)
+      return { ok: true, ...kq, caiDatTk: cd }
+    } catch (e) {
+      nhatKy.loi('Từ khóa hot lỗi: ' + e.message)
+      baoTienDo({ phanTram: 100, viec: 'Tra cứu từ khóa lỗi', chiTiet: e.message, soLoi: 1, trangThai: 'loi', khu: 'dexuat' })
+      return { ok: false, loi: e.message }
+    } finally {
+      if (trinhDoc) trinhDoc.dong()
+      if (trinhDocTrends) trinhDocTrends.dong()
+      dangChayTuKhoa = false
+    }
+  })
+
+  ipcMain.handle('dexuat:xuat-tu-khoa', async (_su, { dong = [], linhVuc = '' } = {}) => {
+    if (!dong.length) return { ok: false, loi: 'Chưa có bảng từ khóa.' }
+    const { canceled, filePath } = await dialog.showSaveDialog(cuaSo, {
+      title: 'Xuất bảng từ khóa hot',
+      defaultPath: path.join(app.getPath('downloads'), xuatVanBan.tenTepAnToan('tu-khoa-hot ' + linhVuc) + '.xlsx'),
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+    })
+    if (canceled || !filePath) return { ok: false, huy: true }
+    const ExcelJS = require('exceljs')
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('Từ khóa hot', { views: [{ state: 'frozen', ySplit: 1 }] })
+    ws.columns = [
+      { header: 'Từ khóa', key: 'tuKhoa', width: 42 }, { header: 'Điểm', key: 'diem', width: 8 },
+      { header: 'Nhãn', key: 'nhan', width: 10 }, { header: 'Nhu cầu', key: 'nhuCau', width: 9 },
+      { header: 'Xu hướng', key: 'xuHuong', width: 9 }, { header: 'Cơ hội', key: 'coHoi', width: 9 },
+      { header: 'Đang trend', key: 'trend', width: 10 }, { header: 'View trung vị video tháng này', key: 'viewTrungVi', width: 16 },
+      { header: 'Nguồn', key: 'nguon', width: 36 }
+    ]
+    ws.getRow(1).font = { bold: true }
+    for (const d of dong) {
+      ws.addRow({ ...d, trend: d.dangTrend ? 'có' : '', nhuCau: d.nhuCau ?? '', xuHuong: d.xuHuong ?? '', coHoi: d.coHoi ?? '', nguon: (d.nguon || []).join(' · ') })
+    }
+    try { await wb.xlsx.writeFile(filePath) } catch (e) { return { ok: false, loi: `Không ghi được: ${e.message}. Tệp đang mở trong Excel thì đóng lại.` } }
+    return { ok: true, duongDan: filePath }
   })
 
   // --- Đề xuất video: bảng Thịnh hành theo danh mục (API) -------------------
@@ -1786,10 +1890,19 @@ async function chaySmoke() {
     ['prompt-anh', '#o-prompt-mau', 'prompt-anh-style-mau'],
     ['prompt-anh', '#thong-ke-canh', 'prompt-anh-cat-canh'],
     ['prompt-anh', '#bang-canh', 'prompt-anh-bang-json'],
-    ['cai-dat', '[data-khoa="khoaClaude"]', 'cai-dat-claude-api']
+    ['cai-dat', '[data-khoa="khoaClaude"]', 'cai-dat-claude-api'],
+    ['de-xuat', '#tk-geo', 'de-xuat-tu-khoa-cai-dat', 'tu-khoa'],
+    ['de-xuat', '#bang-tu-khoa', 'de-xuat-tu-khoa-bang', 'tu-khoa']
   ]
-  for (const [man, chon, tenAnh] of khoiDuoiTamNhin) {
+  for (const [man, chon, tenAnh, tabDeXuat] of khoiDuoiTamNhin) {
     await cuaSo.webContents.executeJavaScript(`window.smokeMoMan('${man}')\n;undefined;`).catch(() => {})
+    // Khối nằm trong một tab con của Đề xuất video → bấm tab đó trước (mặc định là Radar).
+    await cuaSo.webContents.executeJavaScript(`
+      (function () {
+        var t = document.querySelector('.tab-de-xuat[data-tab="${tabDeXuat || 'radar'}"]');
+        if (t && '${man}' === 'de-xuat') t.click();
+      })()
+    `).catch(() => {})
     await cuaSo.webContents.executeJavaScript(`
       (function () {
         var o = document.querySelector('${chon}');
@@ -1839,7 +1952,11 @@ async function chaySmoke() {
     '#thong-ke-canh .huy-hieu-canh-bao', '[data-khoa="khoaClaude"]', '[data-khoa="moHinhClaude"]',
     // 0.6.2: Cách 2 trên ChatGPT, nạp tệp ở Prompt ảnh bước 2 và 3
     'input[name="noi-viet"][value="chatgpt"]', '#nut-mo-noi-viet', '#huong-dan-cach-2 li',
-    '#nut-mo-tep-prompt-mau', '#nut-mo-tep-mo-ta'
+    '#nut-mo-tep-prompt-mau', '#nut-mo-tep-mo-ta',
+    // 0.7.0: Từ khóa hot
+    '.tab-de-xuat[data-tab="tu-khoa"]', '#khoi-tu-khoa', '#chon-tai-khoan-tu-khoa option', '#tk-geo', '#tk-thoi-gian', '#tk-so-tu-khoa',
+    '#tk-ts-nhu-cau', '#tk-dung-trends', '#nut-tra-tu-khoa', '#nut-dung-tu-khoa', '#nut-xuat-tu-khoa', '#loc-tu-khoa .chip',
+    '#bang-tu-khoa .thanh-diem-day', '#bang-tu-khoa .duong-xu-huong polyline', '#bang-tu-khoa .nhan-trend', '#bang-tu-khoa [data-tim]'
   ]
   const thieuPhanTu = await cuaSo.webContents.executeJavaScript(`
     (function () {

@@ -24,6 +24,10 @@ contextBridge.exposeInMainWorld('api', {
   // Đề xuất video
   chayRadar: (thamSo) => goi('dexuat:radar', thamSo),
   layVideoHot: (thamSo) => goi('dexuat:hot', thamSo),
+  traTuKhoaHot: (thamSo) => goi('dexuat:tu-khoa-hot', thamSo),
+  dungTuKhoaHot: () => goi('dexuat:dung-tu-khoa'),
+  caiDatTuKhoaHot: () => goi('dexuat:cai-dat-tu-khoa'),
+  xuatTuKhoaHot: (dong, linhVuc) => goi('dexuat:xuat-tu-khoa', { dong, linhVuc }),
 
   // Kênh theo dõi
   themKenh: (dinhDanh) => goi('kenh:them', { dinhDanh }),

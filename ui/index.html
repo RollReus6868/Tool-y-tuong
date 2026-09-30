@@ -122,6 +122,82 @@
         <div class="the-tab">
           <button class="tab-de-xuat tab-de-xuat-chon" data-tab="radar">✦ Radar đề xuất (trình duyệt)</button>
           <button class="tab-de-xuat" data-tab="hot">▲ Đang hot (API)</button>
+          <button class="tab-de-xuat" data-tab="tu-khoa">◆ Từ khóa hot (chấm 0–100)</button>
+        </div>
+      </div>
+
+      <div id="khoi-tu-khoa" class="khoi-tab" hidden>
+        <div class="the the-doc-lap">
+          <label class="nhan">Từ khóa hot — gõ lĩnh vực ở ô trên, tool đề xuất và chấm điểm từ khóa 0–100</label>
+          <p class="ghi-chu">Nguồn: <b>gợi ý tìm kiếm YouTube</b> (miễn phí) + <b>Google Trends — "YouTube Search"</b> (đọc qua cửa sổ ẩn
+            của trình duyệt trong tool, như radar) + <b>trang tìm kiếm YouTube</b> lọc video tháng này (miễn phí) + tuỳ chọn
+            <b>YouTube API</b> để lấy sub kênh (~2 đơn vị quota / 50 video). vidIQ và TubeBuddy không có API công khai nên không nối được;
+            Google Trends cũng không có API công khai — tool đọc đúng dữ liệu trang Trends tự tải.</p>
+          <div class="luoi-cai-dat">
+            <label>Đọc bằng tài khoản (Trends ổn định hơn khi đã đăng nhập Google)
+              <select id="chon-tai-khoan-tu-khoa"></select></label>
+            <label>Khu vực (mã nước)
+              <input id="tk-geo" maxlength="2" placeholder="US"></label>
+            <label>Khoảng thời gian Trends
+              <select id="tk-thoi-gian">
+                <option value="7-ngay">7 ngày qua</option>
+                <option value="30-ngay">30 ngày qua</option>
+                <option value="90-ngay">90 ngày qua</option>
+                <option value="12-thang">12 tháng qua</option>
+              </select></label>
+            <label>Số từ khóa chấm điểm
+              <input type="number" id="tk-so-tu-khoa" min="5" max="50" step="5"></label>
+            <label>Số từ tối thiểu mỗi từ khóa
+              <input type="number" id="tk-so-tu-toi-thieu" min="1" max="6"></label>
+            <label>Bỏ từ khóa chứa (cách nhau dấu phẩy)
+              <input id="tk-tu-loai-tru" placeholder="shorts, tiktok, song, lyrics"></label>
+            <label>Trọng số Nhu cầu
+              <input type="number" id="tk-ts-nhu-cau" min="0" max="100" step="5"></label>
+            <label>Trọng số Xu hướng
+              <input type="number" id="tk-ts-xu-huong" min="0" max="100" step="5"></label>
+            <label>Trọng số Cơ hội
+              <input type="number" id="tk-ts-co-hoi" min="0" max="100" step="5"></label>
+            <label class="o-danh-dau"><input type="checkbox" id="tk-mo-rong-az"> Mở rộng gợi ý a–z ("lĩnh vực a", "lĩnh vực b"…) — nhiều từ khóa dài hơn, chậm hơn ~30 giây</label>
+            <label class="o-danh-dau"><input type="checkbox" id="tk-chua-linh-vuc"> Chỉ giữ từ khóa có chứa một từ của lĩnh vực</label>
+            <label class="o-danh-dau"><input type="checkbox" id="tk-dung-trends"> Dùng Google Trends (YouTube Search) — chấm Nhu cầu và Xu hướng chính xác hơn, thêm ~1–2 phút</label>
+            <label class="o-danh-dau"><input type="checkbox" id="tk-dung-trang-yt"> Đọc trang tìm kiếm YouTube (video đăng trong tháng) để chấm Cơ hội</label>
+            <label class="o-danh-dau"><input type="checkbox" id="tk-dung-api"> Dùng khoá API lấy sub kênh (biết kênh vừa &amp; nhỏ có đang thắng không)</label>
+          </div>
+          <div class="hang-nut">
+            <button id="nut-tra-tu-khoa" class="nut nut-chinh nut-to">Tra cứu từ khóa hot</button>
+            <button id="nut-dung-tu-khoa" class="nut nut-do">Dừng</button>
+            <span id="ghi-chu-tu-khoa" class="ghi-chu"></span>
+          </div>
+          <details class="giai-thich">
+            <summary>Điểm 0–100 tính thế nào?</summary>
+            <ol class="danh-sach-buoc">
+              <li><b>Nhu cầu</b> — người xem có tìm không: mức quan tâm trên Google Trends "YouTube Search" (so chéo giữa các từ khóa,
+                quy về cùng thang nhờ một từ khóa mỏ neo) + độ mạnh trong gợi ý tìm kiếm YouTube (hiện ở bao nhiêu tiền tố, đứng thứ mấy).</li>
+              <li><b>Xu hướng</b> — đang lên hay xuống: trung bình 1/4 khoảng thời gian gần nhất so với phần trước (đứng yên = 50,
+                gấp đôi ≈ 82, gấp ba trở lên = 100). Trends ghi "Breakout" = tăng đột biến → ít nhất 95.</li>
+              <li><b>Cơ hội</b> — video MỚI (đăng trong tháng) về từ khóa đó có ăn view không: view trung vị top 10 (1 nghìn ≈ 20 điểm,
+                100 nghìn ≈ 60, 1 triệu ≈ 80); trừ điểm khi view dồn vào 1–2 video viral; cộng điểm khi kênh 1.000–100.000 sub nằm trong top.</li>
+              <li><b>Tổng</b> = trung bình có trọng số (mặc định 35 / 35 / 30). ≥ 80 <b>RẤT HOT</b>, 65–79 <b>HOT</b>, 50–64 <b>KHÁ</b>.
+                Xu hướng ≥ 70 gắn thêm <b>ĐANG TREND</b>.</li>
+            </ol>
+            <p class="ghi-chu">Là điểm <b>tương đối trong lĩnh vực anh nhập</b>, không phải số lượt tìm tuyệt đối. Trends bị chặn (gọi nhiều,
+              hỏi xác minh) thì tool vẫn chạy bằng gợi ý + trang YouTube và ghi rõ cột Xu hướng lấy từ đâu.</p>
+          </details>
+        </div>
+
+        <div class="the" id="the-ket-qua-tu-khoa" hidden>
+          <div class="hang-dau-bang">
+            <div><span class="nhan">Kết quả</span> <span id="tom-tat-tu-khoa" class="ghi-chu"></span></div>
+            <div class="hang-nut">
+              <button id="nut-xuat-tu-khoa" class="nut nut-phu">Xuất Excel</button>
+            </div>
+          </div>
+          <div class="loc-nhanh" id="loc-tu-khoa">
+            <button class="chip chip-chon" data-loc="tat-ca">Tất cả</button>
+            <button class="chip" data-loc="hot">HOT trở lên (≥ 65)</button>
+            <button class="chip" data-loc="trend">Đang trend</button>
+          </div>
+          <div class="cuon-bang"><table id="bang-tu-khoa"></table></div>
         </div>
       </div>
 
@@ -1023,6 +1099,8 @@
         <ol class="danh-sach-buoc">
           <li><b>Ý tưởng</b> → ghép 5 từ khóa (miễn phí) → sửa lại → <b>Tìm video</b> → <b>tick</b> những video muốn làm theo.</li>
           <li><b>Đề xuất video</b> → nhập lĩnh vực → <b>Chạy radar</b> để xem YouTube đang đẩy video nào → tick thêm.</li>
+          <li>Chưa biết chọn từ khóa nào? <b>Đề xuất video</b> → thẻ <b>◆ Từ khóa hot</b> → <b>Tra cứu từ khóa hot</b>: tool đề xuất
+            từ khóa trong lĩnh vực và chấm 0–100 (Nhu cầu · Xu hướng · Cơ hội). Bấm <b>Tìm video</b> ở dòng từ khóa ưng ý để sang màn Ý tưởng.</li>
           <li><b>Kênh theo dõi</b> → thêm các kênh đối thủ → quét mỗi ngày (3 đơn vị/kênh) để bắt video nổ sớm.</li>
           <li><b>Lời thoại</b> → tạo dự án → dán 2–4 link video → lấy phụ đề.</li>
           <li><b>Kịch bản</b> → chép prompt dàn ý → dán sang Claude → dán dàn ý về → làm từng phần một.</li>

@@ -11,6 +11,41 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.7.0 — Từ khóa hot: gõ lĩnh vực, tool đề xuất từ khóa và chấm 0–100
+
+Màn **Đề xuất video** có thêm thẻ thứ ba **◆ Từ khóa hot**. Anh gõ lĩnh vực ở ô
+chung phía trên (ví dụ `bible stories, old testament`), bấm **Tra cứu từ khóa
+hot**. Tool gom từ khóa ứng viên, chọn N từ khóa mạnh nhất rồi chấm từng từ.
+
+- **Nguồn dữ liệu, và vì sao chọn chúng**:
+  - **Gợi ý tìm kiếm YouTube**: miễn phí. Có mở rộng a–z, tức "lĩnh vực a", "lĩnh vực b"…
+  - **Google Trends, mục "YouTube Search"**: là Trends của riêng YouTube, không phải Google web. Đọc qua cửa sổ ẩn của trình duyệt trong tool, giống cách radar đang làm.
+  - **Trang tìm kiếm YouTube**: lọc video đăng trong tháng, xếp theo lượt xem, miễn phí.
+  - **Khoá API (tuỳ chọn)**: lấy sub kênh, khoảng 2 đơn vị quota cho 50 video.
+- **Nguồn không dùng được**:
+  - **vidIQ và TubeBuddy** không có API công khai nên không nối được.
+  - **Google Analytics** là số liệu kênh của chính anh, không nói gì về từ khóa ngoài kia.
+  - Google Trends cũng **không có API công khai**. Tool gọi đúng các địa chỉ dữ liệu mà chính trang Trends tự tải, từ bên trong trang đó.
+- **Điểm 0–100** là trung bình có trọng số của ba phần (mặc định 35 / 35 / 30):
+  - **Nhu cầu**: mức quan tâm trên Trends cộng độ mạnh trong gợi ý tìm kiếm. Các lô 5 từ khóa được quy về cùng thang nhờ một từ khóa "mỏ neo", nên so được chéo giữa các lô.
+  - **Xu hướng**: so 1/4 khoảng thời gian gần nhất với phần trước. Đứng yên = 50, gấp đôi ≈ 96. Trends ghi "Breakout" thì ít nhất 95.
+  - **Cơ hội**: view trung vị của video mới đăng trong tháng. Bị trừ điểm khi view dồn vào 1 video viral, được cộng điểm khi kênh 1.000–100.000 sub có mặt trong top.
+  - Nhãn theo tổng điểm: **RẤT HOT** ≥ 80, **HOT** ≥ 65, **KHÁ** ≥ 50. Xu hướng ≥ 70 thì gắn thêm **ĐANG TREND**.
+  - Phần nào thiếu dữ liệu thì hiện "—" và **không tính vào tổng**. Không coi thiếu dữ liệu là 0 điểm.
+- **Tinh chỉnh ngay trong mục**, tự lưu khi bấm tra cứu:
+  - khu vực, khoảng thời gian Trends (7 ngày / 30 ngày / 90 ngày / 12 tháng)
+  - số từ khóa chấm điểm, số từ tối thiểu mỗi từ khóa, từ loại trừ
+  - ba trọng số
+  - bật/tắt mở rộng a–z, "chỉ giữ từ khóa chứa lĩnh vực", Trends, trang YouTube, API
+  - tài khoản dùng để đọc
+- **Bảng kết quả**:
+  - thanh điểm, nhãn, đường xu hướng nhỏ vẽ từ chuỗi Trends
+  - huy hiệu nguồn (hạt giống / BREAKOUT / Trends đang lên / gợi ý YouTube)
+  - view trung vị tháng; rê chuột vào để xem top video
+  - lọc "HOT trở lên" / "Đang trend", xuất Excel
+  - nút **Tìm video** đưa từ khóa sang màn Ý tưởng
+- **Khi Trends bị chặn** (gọi dồn thì báo 429, hoặc hỏi xác minh), tool **vẫn chạy tiếp** bằng gợi ý và trang YouTube. Cột Xu hướng ghi rõ "ước từ video mới (không có Trends)" và giới hạn ở 90. Dòng tóm tắt ghi rõ lượt này có Trends hay không.
+
 ### 0.6.2 — Kịch bản Cách 2 trên ChatGPT, nạp tệp ở Prompt ảnh, rà toàn bộ + workflow Node 24
 
 - **Kịch bản — Cách 2 viết được trên ChatGPT**: chọn "Viết trên: Claude / ChatGPT".
@@ -554,7 +589,7 @@ mới** trong app tự thấy bản mới.
 
 | Tầng | Lệnh | Bắt được gì |
 |---|---|---|
-| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ**, **tham số yt-dlp lấy phụ đề**, **xuất .docx, tách kịch bản dán về, Claude API (nguyên văn, thử lại, chạy tiếp), cắt cảnh, style mẫu**, **prompt mẫu JSON**, **ChatGPT, nạp tệp, mối nối giao diện ↔ preload ↔ main, workflow** (230 ca) |
+| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ**, **tham số yt-dlp lấy phụ đề**, **xuất .docx, tách kịch bản dán về, Claude API (nguyên văn, thử lại, chạy tiếp), cắt cảnh, style mẫu**, **prompt mẫu JSON**, **ChatGPT, nạp tệp, mối nối giao diện ↔ preload ↔ main, workflow**, **từ khóa hot: URL Trends nguyên văn, đọc trả lời Trends, công thức điểm, quy lô về một thang, chạy cả chuỗi có/không Trends, 429** (244 ca) |
 | 2. Giao diện | `YT_SMOKE=1 npx electron --no-sandbox .` | thiếu màn, thiếu phần tử, **thiếu khoá cài đặt**, lớp phủ che giao diện, **thumbnail và ảnh xem trước footage có vẽ ra không**; nạp dữ liệu mẫu rồi chụp ảnh từng màn vào `shots/` |
 
 Tầng 2 chụp ảnh xong **phải mở ảnh ra xem bằng mắt**. Nút bị cắt, chữ vỡ dấu,
@@ -582,6 +617,11 @@ triển không có. Không được hiểu là "đã chạy tốt":
   cả chuỗi bằng hàm giả, chưa gọi bằng khoá thật; giá ước tính có thể lệch
 - **ChatGPT thật** trong trình duyệt của tool (đăng nhập, canvas); prompt đã dặn
   cách lùi khi không mở được canvas
+- **Google Trends thật** (Từ khóa hot): địa chỉ và cách đọc dựng theo đúng những
+  gì trang Trends tự tải. Máy phát triển không ra được Google nên **chưa gọi thật
+  lần nào**. Google có thể đổi định dạng hoặc chặn (429 / hỏi xác minh). Khi đó tool
+  tự lùi về gợi ý + trang YouTube và ghi rõ trên bảng. Mức ngưỡng điểm (HOT ≥ 65…)
+  cần anh chạy vài lĩnh vực thật rồi chỉnh trọng số cho hợp kênh
 - Workflow với action **@v5** trên GitHub thật (đã `actionlint`, chưa chạy thật)
 - Artifact trên **claude.ai thật** giữ đúng dòng `## PHẦN n` qua 8 lượt "tiếp"
   (Claude có thể đặt tiêu đề khác — tool báo phần thiếu/trùng)
