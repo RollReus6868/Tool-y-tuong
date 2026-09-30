@@ -545,3 +545,4 @@ details.the > summary::before { content: '▸  '; color: var(--cam); }
 details.the[open] > summary::before { content: '▾  '; }
 details.the > summary::after { content: '  (bấm để mở)'; text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--chu-mo); }
 details.the[open] > summary::after { content: ''; }
+.o-chon-noi-viet { display: inline-flex !important; grid-column: auto; margin: 0 6px; font-size: 13px; }

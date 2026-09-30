@@ -893,11 +893,11 @@ function dangKyIPC() {
     })
   }
 
-  ipcMain.handle('kichban:prompt-mot-lan', (_su, { duAnMa, skillId, yeuCau }) => {
+  ipcMain.handle('kichban:prompt-mot-lan', (_su, { duAnMa, skillId, yeuCau, noiViet }) => {
     const nl = nguyenLieuKichBan(duAnMa, skillId, yeuCau)
     return {
       ok: true,
-      prompt: kichBan.taoPromptMotLan(nl),
+      prompt: kichBan.taoPromptMotLan({ ...nl, noiViet: noiViet === 'chatgpt' ? 'chatgpt' : 'claude' }),
       coLoiThoai: !!nl.loiThoai.trim(),
       coSkill: !!nl.skill.trim()
     }
@@ -1743,6 +1743,10 @@ async function chaySmoke() {
     .then((c) => JSON.parse(c)).catch((e) => ({ ok: false, loi: e.message }))
   nhatKy.tin('Smoke: prompt mẫu JSON — ' + JSON.stringify(jsonMau))
 
+  const cach2 = await cuaSo.webContents.executeJavaScript('window.smokeKiemCach2()')
+    .then((c) => JSON.parse(c)).catch((e) => ({ ok: false, loi: e.message }))
+  nhatKy.tin('Smoke: kịch bản Cách 2 — ' + JSON.stringify(cach2))
+
   const cacMan = ['y-tuong', 'de-xuat', 'kenh', 'loi-thoai', 'kich-ban', 'kiem-duyet', 'prompt-anh', 'footage', 'trinh-duyet', 'cai-dat', 'huong-dan', 'nhat-ky']
   const thieu = []
 
@@ -1777,6 +1781,7 @@ async function chaySmoke() {
     ['cai-dat', '[data-khoa="khoaPexels"]', 'cai-dat-footage'],
     ['loi-thoai', '#the-ket-qua-loi-thoai', 'loi-thoai-ket-qua'],
     ['kich-ban', '#nut-viet-tu-dong', 'kich-ban-cach-1-2'],
+    ['kich-ban', '#huong-dan-cach-2', 'kich-ban-cach-2'],
     ['kich-ban', '#the-kich-ban-hien-tai', 'kich-ban-hien-tai'],
     ['prompt-anh', '#o-prompt-mau', 'prompt-anh-style-mau'],
     ['prompt-anh', '#thong-ke-canh', 'prompt-anh-cat-canh'],
@@ -1831,7 +1836,10 @@ async function chaySmoke() {
     '#nut-viet-tu-dong', '#nut-dung-viet', '#nut-prompt-mot-lan', '#o-ban-dan', '#nut-nhan-ban-dan', '#chi-tiet-tung-phan',
     '#o-kich-ban-hien-tai', '#nut-xuat-kich-ban', '#nut-luu-ban-moi',
     '#o-prompt-mau', '#o-style-chung', '#o-co-anh-mau', '#nut-luu-style', '#nut-xem-thu-style',
-    '#thong-ke-canh .huy-hieu-canh-bao', '[data-khoa="khoaClaude"]', '[data-khoa="moHinhClaude"]'
+    '#thong-ke-canh .huy-hieu-canh-bao', '[data-khoa="khoaClaude"]', '[data-khoa="moHinhClaude"]',
+    // 0.6.2: Cách 2 trên ChatGPT, nạp tệp ở Prompt ảnh bước 2 và 3
+    'input[name="noi-viet"][value="chatgpt"]', '#nut-mo-noi-viet', '#huong-dan-cach-2 li',
+    '#nut-mo-tep-prompt-mau', '#nut-mo-tep-mo-ta'
   ]
   const thieuPhanTu = await cuaSo.webContents.executeJavaScript(`
     (function () {
@@ -1877,12 +1885,12 @@ async function chaySmoke() {
     })()
   `)
 
-  const ketQua = { thieuMan: thieu, thieuPhanTu, thieuKhoaCaiDat: thieuKhoa, bicHe, anhThumbnail: anhVo, anhFootage, jsonMau }
+  const ketQua = { thieuMan: thieu, thieuPhanTu, thieuKhoaCaiDat: thieuKhoa, bicHe, anhThumbnail: anhVo, anhFootage, jsonMau, cach2 }
   fs.writeFileSync(path.join(thuMucAnh, 'ket-qua-smoke.json'), JSON.stringify(ketQua, null, 2))
   nhatKy.tin('Smoke kết quả:', JSON.stringify(ketQua))
 
   const vo = thieu.length || thieuPhanTu.length || (thieuKhoa && thieuKhoa.length) || bicHe.bi ||
-    !anhVo.tong || anhVo.vo > 0 || !anhFootage.tong || anhFootage.vo > 0 || !jsonMau.ok
+    !anhVo.tong || anhVo.vo > 0 || !anhFootage.tong || anhFootage.vo > 0 || !jsonMau.ok || !cach2.ok
   app.exit(vo ? 1 : 0)
 }
 

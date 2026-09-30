@@ -29,7 +29,10 @@ function duocPhepMo(url) {
   try {
     const u = new URL(url)
     if (!/^https?:$/.test(u.protocol)) return false
-    return /(^|\.)(youtube\.com|youtu\.be|google\.com|googleusercontent\.com|gstatic\.com|ggpht\.com|claude\.ai|anthropic\.com)$/i
+    // 0.6.2: thêm ChatGPT (viết kịch bản Cách 2) — chatgpt.com, trang đăng nhập
+    // auth.openai.com, tệp tĩnh oaistatic/oaiusercontent, và trang kiểm tra
+    // "bạn có phải người" của Cloudflare mà ChatGPT hay hiện.
+    return /(^|\.)(youtube\.com|youtu\.be|google\.com|googleusercontent\.com|gstatic\.com|ggpht\.com|claude\.ai|anthropic\.com|chatgpt\.com|openai\.com|oaistatic\.com|oaiusercontent\.com|challenges\.cloudflare\.com)$/i
       .test(u.hostname)
   } catch (_) {
     return false

@@ -35,9 +35,26 @@ function thuoc(k, ds) {
   return ds.includes(chuanKhoa(k))
 }
 
+// Word tự đổi " thành “ ” (AutoCorrect "smart quotes") — JSON dán từ tệp .docx
+// gần như luôn dính. Chỉ dùng khi JSON gốc KHÔNG đọc được, vì một JSON hợp lệ
+// có thể chứa “ ” ngay trong giá trị chuỗi.
+function chuanHoaNhay(s) {
+  return String(s || '')
+    .replace(/^\ufeff/, '')
+    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replace(/\u00A0/g, ' ')
+}
+
+function parseMem(s) {
+  try { return JSON.parse(s) } catch (e1) {
+    try { return JSON.parse(chuanHoaNhay(s)) } catch (_) { throw e1 }
+  }
+}
+
 // Bóc JSON khỏi khối mã / lời dẫn. Trả { ok, mau, loi }.
 function docMauJson(chu) {
-  let s = String(chu || '').trim()
+  let s = String(chu || '').replace(/^\ufeff/, '').trim()
   if (!s) return { ok: false, loi: '' }
   const khoiMa = s.match(/```(?:json)?\s*([\s\S]*?)```/i)
   if (khoiMa) s = khoiMa[1].trim()
@@ -47,7 +64,7 @@ function docMauJson(chu) {
     s = s.slice(dau, cuoi + 1)
   }
   try {
-    const mau = JSON.parse(s)
+    const mau = parseMem(s)
     if (!mau || typeof mau !== 'object' || Array.isArray(mau)) return { ok: false, loi: 'Prompt mẫu JSON phải là MỘT đối tượng { … }, không phải mảng.' }
     return { ok: true, mau }
   } catch (e) {
@@ -58,7 +75,7 @@ function docMauJson(chu) {
 // Có phải người dùng ĐỊNH dán JSON không (để báo lỗi cú pháp thay vì lặng lẽ
 // coi như prompt chữ thường).
 function trongNhuJson(chu) {
-  const s = String(chu || '').replace(/```(?:json)?/gi, '').trim()
+  const s = chuanHoaNhay(String(chu || '').replace(/```(?:json)?/gi, '')).trim()
   return s.startsWith('{') && /"\s*:/.test(s)
 }
 
@@ -211,7 +228,7 @@ function taoPromptJsonTheoMau(loCanh, mau, { loThu = 1, tongLo = 1, khoNhanVat =
 function docTraLoiJson(chu, mau) {
   let s = String(chu || '').trim()
   if (!s) return { prompt: {}, soDoc: 0, loi: 'Chưa dán gì vào.', loiCanh: [] }
-  s = s.replace(/```(?:json)?/gi, '')
+  s = s.replace(/^\ufeff/, '').replace(/```(?:json)?/gi, '')
 
   const theo = {}
   const loiCanh = []
@@ -234,7 +251,7 @@ function docTraLoiJson(chu, mau) {
   const tron = s.trim()
   if (tron.startsWith('[') && !/^\[\d+\]/.test(tron)) {
     try {
-      const mang = JSON.parse(tron.slice(0, tron.lastIndexOf(']') + 1))
+      const mang = parseMem(tron.slice(0, tron.lastIndexOf(']') + 1))
       if (Array.isArray(mang)) {
         for (const o of mang) {
           const so = Number(o && (o.so ?? o.scene_number ?? o.sceneNumber ?? o.scene_id))
@@ -259,7 +276,7 @@ function docTraLoiJson(chu, mau) {
     const a = doan.indexOf('{'); const b = doan.lastIndexOf('}')
     if (a < 0 || b <= a) { loiCanh.push(`Cảnh ${so}: không có JSON`); continue }
     try {
-      kiemVaGhi(so, JSON.parse(doan.slice(a, b + 1)))
+      kiemVaGhi(so, parseMem(doan.slice(a, b + 1)))
     } catch (e) {
       loiCanh.push(`Cảnh ${so}: JSON lỗi (${e.message})`)
     }
@@ -278,6 +295,7 @@ function docTraLoiJson(chu, mau) {
 }
 
 module.exports = {
+  chuanHoaNhay,
   docMauJson,
   trongNhuJson,
   phanTichMau,

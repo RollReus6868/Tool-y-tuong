@@ -12,12 +12,12 @@
 const fs = require('fs')
 const path = require('path')
 
-const DUOI_HO_TRO = ['docx', 'txt', 'md', 'markdown', 'srt', 'vtt', 'rtf']
+const DUOI_HO_TRO = ['docx', 'txt', 'md', 'markdown', 'json', 'srt', 'vtt', 'rtf']
 
 const BO_LOC_HOP_THOAI = [
   { name: 'Mọi tệp đọc được', extensions: DUOI_HO_TRO },
   { name: 'Word', extensions: ['docx'] },
-  { name: 'Văn bản', extensions: ['txt', 'md', 'markdown'] },
+  { name: 'Văn bản', extensions: ['txt', 'md', 'markdown', 'json'] },
   { name: 'Phụ đề', extensions: ['srt', 'vtt'] }
 ]
 
@@ -150,7 +150,9 @@ async function docTep(duongDan, { phuDeMod = require('./phu-de') } = {}) {
     ghiChu = 'Đọc văn bản thuần'
   }
 
-  vanBan = String(vanBan).replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  // Bỏ BOM đầu tệp: Notepad (và chính nút "Xuất txt" của tool) ghi BOM — để
+  // nguyên thì JSON.parse ở ô prompt mẫu hỏng ngay ký tự đầu tiên.
+  vanBan = String(vanBan).replace(/^\ufeff/, '').replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
   const soTu = (vanBan.match(/\S+/g) || []).length
 
   if (!soTu) {

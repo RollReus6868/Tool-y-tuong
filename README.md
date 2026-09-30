@@ -11,6 +11,31 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.6.2 — Kịch bản Cách 2 trên ChatGPT, nạp tệp ở Prompt ảnh, rà toàn bộ + workflow Node 24
+
+- **Kịch bản — Cách 2 viết được trên ChatGPT**: chọn "Viết trên: Claude / ChatGPT".
+  Với ChatGPT, prompt dặn viết vào một **canvas** "Kịch bản", gõ "tiếp" để thêm
+  phần, không viết lại phần cũ; nếu tài khoản không mở được canvas thì mỗi câu trả
+  lời vẫn mở đầu bằng `## PHẦN n` để dán nối nhiều câu trả lời vẫn tách đúng. Nút
+  **Mở chatgpt.com trong tool** (trình duyệt trong app nay cho phép chatgpt.com,
+  auth.openai.com và trang kiểm tra Cloudflare mà ChatGPT hay hiện).
+- **Prompt ảnh — nạp tệp Word / txt / json** ở Bước 2 (prompt mẫu) và Bước 3 (kết
+  quả Claude đã lưu — nạp xong tool tự đọc luôn). Hai bẫy đã chặn: tệp `.txt` có
+  **BOM** (Notepad, và chính nút Xuất txt của tool) làm `JSON.parse` hỏng ký tự đầu;
+  và Word tự đổi `"` thành `“ ”` — bộ đọc JSON thử lại với nháy thẳng khi JSON gốc
+  không đọc được (JSON hợp lệ có `“ ”` trong giá trị thì giữ nguyên).
+- **Rà toàn bộ mối nối**: ca kiểm thử mới quét mọi `$('#id')` của giao diện có trong
+  HTML, mọi `window.api.X` có trong preload, mọi kênh preload có handler ở `main.js`,
+  và id HTML không trùng. Smoke mới đi hết đường Cách 2: chọn ChatGPT → prompt nói
+  "canvas" → tạo dự án → dán bài → khối Kịch bản hiện tại hiện đúng và ghi đĩa.
+- **Workflow GitHub Actions**: 12/12 lượt chạy gần nhất đều thành công và Releases
+  có đủ 4 bản cài + `latest.yml`/`latest-mac.yml` cho tự cập nhật. Sửa cảnh báo
+  "Node.js 20 is deprecated" ở mọi lượt: `checkout`, `setup-node`,
+  `upload-artifact` lên **@v5** (Node 24); bản lưu tạm trong Actions giữ 7 ngày
+  (mỗi lượt ~700 MB, bản cài thật đã nằm trên Releases). Đã chạy `actionlint`:
+  không lỗi. Ghi chú phát hành trên GitHub viết lại theo đúng các màn hiện có (bản
+  cũ còn tả kịch bản "từng phần" và không nhắc Footage).
+
 ### 0.6.1 — prompt mẫu dạng JSON: sinh ra JSON cùng cấu trúc, đổi mẫu thì sinh lại được
 
 **Lỗi 1 — dán mẫu JSON mà prompt sinh ra không phải JSON.** Nút "Sinh toàn bộ
@@ -529,7 +554,7 @@ mới** trong app tự thấy bản mới.
 
 | Tầng | Lệnh | Bắt được gì |
 |---|---|---|
-| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ**, **tham số yt-dlp lấy phụ đề**, **xuất .docx, tách kịch bản dán về, Claude API (nguyên văn, thử lại, chạy tiếp), cắt cảnh, style mẫu**, **prompt mẫu JSON** (221 ca) |
+| 1. Logic thuần | `node tests/run.js` | ghép từ khóa, đếm quota, chấm điểm, lọc Shorts, hợp đồng API, store, xuất Excel, thumbnail, video đã chọn, radar đề xuất (URL nguyên văn + đọc ytInitialData mẫu), **footage: chuỗi số khớp bộ đọc của Flow, Excel giữ số gốc, URL 4 nguồn nguyên văn, lọc giấy phép, tải + thay tệp, gom tệp Flow, kiểm đủ**, **tham số yt-dlp lấy phụ đề**, **xuất .docx, tách kịch bản dán về, Claude API (nguyên văn, thử lại, chạy tiếp), cắt cảnh, style mẫu**, **prompt mẫu JSON**, **ChatGPT, nạp tệp, mối nối giao diện ↔ preload ↔ main, workflow** (230 ca) |
 | 2. Giao diện | `YT_SMOKE=1 npx electron --no-sandbox .` | thiếu màn, thiếu phần tử, **thiếu khoá cài đặt**, lớp phủ che giao diện, **thumbnail và ảnh xem trước footage có vẽ ra không**; nạp dữ liệu mẫu rồi chụp ảnh từng màn vào `shots/` |
 
 Tầng 2 chụp ảnh xong **phải mở ảnh ra xem bằng mắt**. Nút bị cắt, chữ vỡ dấu,
@@ -555,6 +580,9 @@ triển không có. Không được hiểu là "đã chạy tốt":
   máy phát triển bị chặn ra các trang này — cấu trúc trả về thật có thể lệch
 - **Claude API thật** (viết tự động): hợp đồng đối chiếu tài liệu 9/2026 và chạy
   cả chuỗi bằng hàm giả, chưa gọi bằng khoá thật; giá ước tính có thể lệch
+- **ChatGPT thật** trong trình duyệt của tool (đăng nhập, canvas); prompt đã dặn
+  cách lùi khi không mở được canvas
+- Workflow với action **@v5** trên GitHub thật (đã `actionlint`, chưa chạy thật)
 - Artifact trên **claude.ai thật** giữ đúng dòng `## PHẦN n` qua 8 lượt "tiếp"
   (Claude có thể đặt tiêu đề khác — tool báo phần thiếu/trùng)
 - Tệp `.docx` mở bằng **Word thật** (đã giải nén kiểm cấu trúc, chưa mở trong Word)

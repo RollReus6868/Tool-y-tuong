@@ -300,8 +300,8 @@
               cookie của tài khoản ở đây (bật trong Cài đặt), dùng xong xoá ngay.</span>
           </div>
           <div class="cong-dung">
-            <b>3. Dán prompt sang Claude</b>
-            <span>Màn <b>Kịch bản</b> chép prompt ra — mở claude.ai ở đây để dán, không phải chuyển qua lại cửa sổ khác.</span>
+            <b>3. Dán prompt sang Claude / ChatGPT</b>
+            <span>Màn <b>Kịch bản</b> chép prompt ra — mở claude.ai hoặc chatgpt.com ở đây để dán, không phải chuyển qua lại cửa sổ khác.</span>
           </div>
           <div class="cong-dung">
             <b>4. Xem video ngay trong tool</b>
@@ -312,6 +312,7 @@
         <div class="hang-nut">
           <button class="nut nut-phu nut-mo-nhanh" data-url="https://www.youtube.com/?hl=en&amp;gl=US">Mở YouTube (Mỹ)</button>
           <button class="nut nut-phu nut-mo-nhanh" data-url="https://claude.ai/new">Mở claude.ai</button>
+          <button class="nut nut-phu nut-mo-nhanh" data-url="https://chatgpt.com/">Mở chatgpt.com</button>
           <button class="nut nut-phu" id="nut-sang-radar">Sang Radar đề xuất →</button>
         </div>
       </div>
@@ -449,19 +450,19 @@
       </div>
 
       <div class="the">
-        <label class="nhan">Cách 2 — Một prompt trên claude.ai (miễn phí, dùng gói Claude sẵn có)</label>
-        <ol class="danh-sach-buoc">
-          <li>Bấm <b>Chép prompt viết cả bài</b> → dán vào claude.ai (mở ngay trong tool bằng nút bên cạnh).</li>
-          <li>Claude trả dàn ý và viết <b>Phần 1</b> vào một artifact "Kịch bản". Mỗi lần anh gõ <code>tiếp</code>, Claude viết thêm
-            một phần vào <b>chính artifact đó</b>.</li>
-          <li>Tới khi Claude báo <b>HẾT KỊCH BẢN</b>: bấm nút <b>Copy</b> của artifact <b>một lần</b>, dán vào ô dưới → <b>Nhận kịch bản</b>.</li>
-        </ol>
+        <label class="nhan">Cách 2 — Một prompt trên Claude hoặc ChatGPT (miễn phí, dùng gói sẵn có)</label>
+        <div class="hang-nut" style="margin-top:4px">
+          <span class="ghi-chu">Viết trên:</span>
+          <label class="o-danh-dau o-chon-noi-viet"><input type="radio" name="noi-viet" value="claude" checked> Claude (claude.ai)</label>
+          <label class="o-danh-dau o-chon-noi-viet"><input type="radio" name="noi-viet" value="chatgpt"> ChatGPT (chatgpt.com)</label>
+        </div>
+        <ol class="danh-sach-buoc" id="huong-dan-cach-2"></ol>
         <div class="hang-nut">
           <button id="nut-prompt-mot-lan" class="nut nut-chinh">Chép prompt viết cả bài</button>
-          <button class="nut nut-phu nut-mo-nhanh" data-url="https://claude.ai/new">Mở claude.ai trong tool</button>
+          <button id="nut-mo-noi-viet" class="nut nut-phu">Mở claude.ai trong tool</button>
           <span id="ghi-chu-mot-lan" class="ghi-chu"></span>
         </div>
-        <textarea id="o-ban-dan" rows="6" placeholder="Dán TOÀN BỘ nội dung artifact &quot;Kịch bản&quot; vào đây (có các dòng ## PHẦN 1, ## PHẦN 2…)"></textarea>
+        <textarea id="o-ban-dan" rows="6" placeholder="Dán TOÀN BỘ nội dung artifact / canvas &quot;Kịch bản&quot; vào đây (có các dòng ## PHẦN 1, ## PHẦN 2…)"></textarea>
         <div class="hang-nut">
           <button id="nut-nhan-ban-dan" class="nut nut-xanh">Nhận kịch bản</button>
           <span id="ket-qua-ban-dan" class="ghi-chu"></span>
@@ -595,6 +596,10 @@
           Bước 3 và dặn Claude giữ đúng phong cách, màu, ánh sáng, góc máy, độ dài — chỉ thay chủ thể và bối cảnh từng cảnh.
           <b>Style chung</b> được chèn vào đầu MỌI prompt, kể cả khi không nhờ Claude.</p>
         <label class="nhan-nho" for="o-prompt-mau">Prompt mẫu (tuỳ chọn, tiếng Anh) — dạng chữ hoặc dạng JSON { … }; dán JSON thì mọi prompt sinh ra cũng là JSON cùng cấu trúc</label>
+        <div class="hang-nut" style="margin-top:4px">
+          <button id="nut-mo-tep-prompt-mau" class="nut nut-phu">Mở tệp Word / txt / json…</button>
+          <span id="ghi-chu-tep-prompt-mau" class="ghi-chu"></span>
+        </div>
         <textarea id="o-prompt-mau" rows="4" placeholder="vd: Oil painting in the style of 19th-century biblical illustration, an elderly shepherd on a rocky hillside at dusk, warm golden rim light, muted earth tones, wide shot, visible brush strokes, 16:9"></textarea>
         <div class="luoi-cai-dat" style="margin-top:10px">
           <label>Style chung (đầu mọi prompt)
@@ -656,6 +661,10 @@
           Dán kiểu nào tool cũng tự nhận ra.</p>
         <label class="o-danh-dau" id="dong-bo-canh-footage"><input type="checkbox" id="o-bo-canh-footage" checked>
           Bỏ cảnh đã có footage thật — chỉ xin Claude mô tả cảnh AI <span id="so-canh-footage-anh" class="ghi-chu"></span></label>
+        <div class="hang-nut" style="margin-top:4px">
+          <button id="nut-mo-tep-mo-ta" class="nut nut-phu">Mở tệp Word / txt (kết quả Claude đã lưu)…</button>
+          <span id="ghi-chu-tep-mo-ta" class="ghi-chu"></span>
+        </div>
         <textarea id="o-mo-ta-tra-ve" rows="5" placeholder="Dán kết quả Claude trả về — JSON hay prompt thường đều được"></textarea>
         <div class="hang-nut">
           <button id="nut-doc-mo-ta" class="nut nut-xanh">Đọc JSON</button>

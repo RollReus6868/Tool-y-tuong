@@ -292,8 +292,18 @@ function gopKichBan(cacPhan) {
 // lệnh tự rà trước mỗi phần.
 // ---------------------------------------------------------------------------
 
-function taoPromptMotLan({ skill = '', loiThoai = '', yeuCau = {} } = {}) {
+// noiViet: 'claude' (artifact trên claude.ai) hoặc 'chatgpt' (canvas trên
+// chatgpt.com). Nội dung yêu cầu giống hệt nhau; chỉ khác tên "tài liệu" và
+// cách chép ra. Cả hai đều ra đúng dòng "## PHẦN n" để tool tách được.
+const NOI_VIET = {
+  claude: { ten: 'Claude', taiLieu: 'artifact', moTa: 'MỘT artifact (tài liệu)' },
+  chatgpt: { ten: 'ChatGPT', taiLieu: 'canvas', moTa: 'MỘT canvas (tài liệu)' }
+}
+
+function taoPromptMotLan({ skill = '', loiThoai = '', yeuCau = {}, noiViet = 'claude' } = {}) {
   const y = { ...YEU_CAU_MAC_DINH, ...yeuCau }
+  const nv = NOI_VIET[noiViet] || NOI_VIET.claude
+  const tl = nv.taiLieu
   const phan = chiaPhan(y.soTuMucTieu, y.soPhan)
   const khoi = []
 
@@ -331,16 +341,23 @@ function taoPromptMotLan({ skill = '', loiThoai = '', yeuCau = {} } = {}) {
     '',
     '===== CÁCH LÀM — LÀM ĐÚNG THỨ TỰ =====',
     `1. Lượt này: trả lời DÀN Ý ${y.soPhan} phần (tiêu đề + 3 ý chính mỗi phần), rồi viết`,
-    '   PHẦN 1 vào MỘT artifact (tài liệu) tên "Kịch bản". Dừng lại.',
-    '2. Mỗi lần tôi gõ "tiếp": viết phần kế tiếp và THÊM VÀO CUỐI CHÍNH artifact đó',
-    '   (cập nhật artifact cũ, KHÔNG tạo artifact mới). Dừng lại sau mỗi phần.',
+    `   PHẦN 1 vào ${nv.moTa} tên "Kịch bản". Dừng lại.`,
+    `2. Mỗi lần tôi gõ "tiếp": viết phần kế tiếp và THÊM VÀO CUỐI CHÍNH ${tl} đó`,
+    `   (cập nhật ${tl} cũ, KHÔNG tạo ${tl} mới, KHÔNG viết lại hay rút gọn các phần đã có).`,
+    '   Dừng lại sau mỗi phần.',
     `3. Mỗi phần mở đầu bằng MỘT dòng tiêu đề đúng dạng: ## PHẦN <số>`,
-    '   Ngoài dòng đó, artifact chỉ chứa văn đọc — không ghi chú, không chỉ dẫn quay,',
+    `   Ngoài dòng đó, ${tl} chỉ chứa văn đọc — không ghi chú, không chỉ dẫn quay,`,
     '   không in đậm, không "[nhạc]", không đếm từ.',
     '4. TRƯỚC khi viết mỗi phần, rà các phần đã viết: không dùng lại cụm từ, cách vào',
     '   câu, hình ảnh so sánh hay ý đã nói. Vào thẳng mạch, không chào lại, không tóm',
     '   tắt phần trước.',
-    `5. Viết xong PHẦN ${y.soPhan} thì ghi dòng "HẾT KỊCH BẢN" ngoài artifact.`
+    `5. Viết xong PHẦN ${y.soPhan} thì ghi dòng "HẾT KỊCH BẢN" ngoài ${tl}.`,
+    ...(noiViet === 'chatgpt'
+      // ChatGPT có lúc không mở canvas (tài khoản / chế độ không hỗ trợ). Khi đó
+      // vẫn phải ra đúng "## PHẦN n" trong câu trả lời để tool tách được.
+      ? [`6. Nếu không mở được canvas: viết mỗi phần ngay trong câu trả lời, vẫn mở đầu bằng`,
+         '   dòng "## PHẦN <số>", không thêm lời dẫn trước hay sau phần đó.']
+      : [])
   ].join('\n'))
 
   return khoi.join('\n\n')
@@ -402,6 +419,7 @@ function lamSachVanDoc(chu) {
 }
 
 module.exports = {
+  NOI_VIET,
   taoPromptMotLan,
   tachPhanBanDan,
   lamSachVanDoc,

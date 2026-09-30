@@ -977,9 +977,45 @@ $('#nut-dung-viet').onclick = async () => {
 }
 $('#chon-skill').addEventListener('change', capNhatUocApi)
 
+// Cách 2 viết được trên Claude (artifact) hoặc ChatGPT (canvas). Hai nơi chỉ
+// khác tên tài liệu và cách chép ra; tool tách bài dán về như nhau.
+const NOI_VIET_UI = {
+  claude: {
+    url: 'https://claude.ai/new', nutMo: 'Mở claude.ai trong tool',
+    buoc: [
+      'Bấm <b>Chép prompt viết cả bài</b> → dán vào claude.ai (mở ngay trong tool bằng nút bên cạnh).',
+      'Claude trả dàn ý và viết <b>Phần 1</b> vào một <b>artifact</b> "Kịch bản". Mỗi lần anh gõ <code>tiếp</code>, Claude viết thêm một phần vào <b>chính artifact đó</b>.',
+      'Tới khi Claude báo <b>HẾT KỊCH BẢN</b>: bấm nút <b>Copy</b> của artifact <b>một lần</b>, dán vào ô dưới → <b>Nhận kịch bản</b>.'
+    ]
+  },
+  chatgpt: {
+    url: 'https://chatgpt.com/', nutMo: 'Mở chatgpt.com trong tool',
+    buoc: [
+      'Bấm <b>Chép prompt viết cả bài</b> → dán vào chatgpt.com (mở ngay trong tool bằng nút bên cạnh, hoặc trình duyệt thường).',
+      'ChatGPT trả dàn ý và viết <b>Phần 1</b> vào một <b>canvas</b> "Kịch bản". Mỗi lần anh gõ <code>tiếp</code>, ChatGPT viết thêm một phần vào <b>chính canvas đó</b>.',
+      'Tới khi ChatGPT báo <b>HẾT KỊCH BẢN</b>: bấm vào canvas → <b>Ctrl+A</b> → <b>Ctrl+C</b>, dán vào ô dưới → <b>Nhận kịch bản</b>. ' +
+        'ChatGPT không mở canvas thì các phần nằm ngay trong câu trả lời — chép lần lượt các câu trả lời, dán nối vào ô (tool tự tách theo dòng <code>## PHẦN n</code>).'
+    ]
+  }
+}
+
+function noiVietDangChon() {
+  const o = document.querySelector('input[name="noi-viet"]:checked')
+  return o && o.value === 'chatgpt' ? 'chatgpt' : 'claude'
+}
+
+function veHuongDanCach2() {
+  const nv = NOI_VIET_UI[noiVietDangChon()]
+  $('#huong-dan-cach-2').innerHTML = nv.buoc.map((b) => `<li>${b}</li>`).join('')
+  $('#nut-mo-noi-viet').textContent = nv.nutMo
+}
+$$('input[name="noi-viet"]').forEach((o) => o.addEventListener('change', veHuongDanCach2))
+veHuongDanCach2()
+$('#nut-mo-noi-viet').onclick = () => moTrongApp(NOI_VIET_UI[noiVietDangChon()].url)
+
 $('#nut-prompt-mot-lan').onclick = async () => {
   const yeuCau = yeuCauKichBan()
-  const kq = await window.api.promptMotLan(duAnHienTai, $('#chon-skill').value, yeuCau)
+  const kq = await window.api.promptMotLan(duAnHienTai, $('#chon-skill').value, yeuCau, noiVietDangChon())
   await chepVaBao(kq.prompt, $('#ghi-chu-mot-lan'))
   const thieu = [!kq.coSkill ? 'chưa chọn skill' : '', !kq.coLoiThoai ? 'dự án chưa có lời thoại tư liệu' : ''].filter(Boolean)
   if (yeuCau.videoThamKhao) $('#ghi-chu-mot-lan').textContent += ` · kèm ${yeuCau.videoThamKhao.length} video tham khảo`
@@ -991,7 +1027,7 @@ $('#nut-prompt-mot-lan').onclick = async () => {
 
 $('#nut-nhan-ban-dan').onclick = async () => {
   const chu = $('#o-ban-dan').value
-  if (!chu.trim()) { await baoTin('Dán toàn bộ nội dung artifact "Kịch bản" vào ô trước đã.'); return }
+  if (!chu.trim()) { await baoTin('Dán toàn bộ nội dung artifact / canvas "Kịch bản" vào ô trước đã.'); return }
   if (!duAnHienTai && !(await hoiCo('Chưa chọn dự án — kịch bản sẽ chỉ hiện ở khối "Kịch bản hiện tại", không được lưu. Vẫn nhận?', 'Vẫn nhận'))) return
   const kq = await window.api.nhanBanDan(duAnHienTai, chu)
   if (!kq.ok) { await baoTin(kq.loi); return }
@@ -1459,6 +1495,29 @@ $('#nut-luu-style').onclick = async () => {
     $('#ghi-chu-xuat').textContent = 'Style vừa đổi — bấm "Sinh toàn bộ prompt" lại để áp style mới.'
     $('#ghi-chu-xuat').className = 'ghi-chu ghi-chu-vang'
   }
+}
+
+// 0.6.2 — nạp prompt mẫu / kết quả Claude từ tệp Word, txt, json. Tệp Word
+// thường đổi " thành “ ” — bộ đọc JSON tự sửa lại (prompt-json.chuanHoaNhay).
+$('#nut-mo-tep-prompt-mau').onclick = async () => {
+  const kq = await window.api.moTep('Mở tệp chứa prompt mẫu (Word, txt, json)')
+  if (kq.huy) return
+  if (!kq.ok) { await baoTin(kq.loi || 'Không đọc được tệp.'); return }
+  $('#o-prompt-mau').value = kq.vanBan
+  const luu = await luuStyleTuO()
+  const json = luu && luu.json
+  $('#ghi-chu-tep-prompt-mau').innerHTML = `<span class="huy-hieu-xong">✔ Đã nạp ${thoat(kq.ten)}</span> ${kq.soTu.toLocaleString('vi-VN')} từ` +
+    (json && json.la ? ' · nhận ra <b>JSON</b>' : '') + (json && json.loi ? ' · <span class="canh-bao-manh">JSON lỗi — xem dòng dưới</span>' : '')
+}
+
+$('#nut-mo-tep-mo-ta').onclick = async () => {
+  const kq = await window.api.moTep('Mở tệp chứa kết quả Claude trả về (Word, txt, json)')
+  if (kq.huy) return
+  if (!kq.ok) { await baoTin(kq.loi || 'Không đọc được tệp.'); return }
+  $('#o-mo-ta-tra-ve').value = kq.vanBan
+  $('#ghi-chu-tep-mo-ta').innerHTML = `<span class="huy-hieu-xong">✔ Đã nạp ${thoat(kq.ten)}</span> ${kq.soTu.toLocaleString('vi-VN')} từ — đang đọc…`
+  // Đọc luôn, khỏi bấm thêm nút.
+  await $('#nut-doc-mo-ta').onclick()
 }
 
 $('#nut-xem-thu-style').onclick = async () => {
@@ -1970,7 +2029,7 @@ function veBangVideo(bang, dong, cacCot, { nguon = '', rong = 'Không có dòng 
 
 async function moTrongApp(url) {
   const kq = await window.api.moNhanhTrongApp(url)
-  if (!kq.ok) { await baoTin('Chỉ mở được các trang YouTube, Google và Claude trong trình duyệt của tool.'); return }
+  if (!kq.ok) { await baoTin('Chỉ mở được các trang YouTube, Google, Claude và ChatGPT trong trình duyệt của tool.'); return }
   moMan('trinh-duyet')
 }
 
@@ -2872,6 +2931,32 @@ window.smokeKiemJsonMau = async function () {
   // Trả ô về mẫu hợp lệ để ảnh chụp sau đó không hiện lỗi.
   $('#o-prompt-mau').value = '{\n  "scene_description": "An elderly shepherd on a hillside",\n  "style": "oil painting, biblical illustration",\n  "camera": {"shot": "wide shot"},\n  "negative_prompt": "text"\n}'
   await $('#nut-tao-prompt').onclick()
+  return JSON.stringify(ra)
+}
+
+// Kiểm thử tầng 2 (0.6.2): Kịch bản Cách 2 cả hai nơi viết, rồi NHẬN bài dán
+// về vào một dự án thật (ghi đĩa thật) → khối "Kịch bản hiện tại" phải hiện.
+window.smokeKiemCach2 = async function () {
+  const ra = {}
+  moMan('kich-ban')
+  const chon = (v) => { document.querySelector(`input[name="noi-viet"][value="${v}"]`).checked = true; veHuongDanCach2() }
+  chon('chatgpt')
+  ra.nutMoChatGPT = $('#nut-mo-noi-viet').textContent
+  ra.huongDanCanvas = /canvas/.test($('#huong-dan-cach-2').textContent)
+  const pg = await window.api.promptMotLan('', '', {}, noiVietDangChon())
+  ra.promptChatGPT = /canvas/.test(pg.prompt) && !/artifact/.test(pg.prompt)
+  chon('claude')
+  const pc = await window.api.promptMotLan('', '', {}, noiVietDangChon())
+  ra.promptClaude = /artifact/.test(pc.prompt)
+  const d = await window.api.taoDuAn('smoke cach 2')
+  duAnHienTai = d.ma
+  await taiDuAn()
+  $('#o-ban-dan').value = 'Outline…\n## PHẦN 1\nThe river rose in the spring of 1927.\n## PHẦN 2\nBy nightfall the town was gone.\nHẾT KỊCH BẢN'
+  await $('#nut-nhan-ban-dan').onclick()
+  ra.kichBanHienTai = $('#o-kich-ban-hien-tai').value
+  ra.tomTat = $('#tom-tat-kich-ban').textContent
+  ra.ok = ra.nutMoChatGPT === 'Mở chatgpt.com trong tool' && ra.huongDanCanvas && ra.promptChatGPT && ra.promptClaude &&
+    ra.kichBanHienTai === 'The river rose in the spring of 1927.\n\nBy nightfall the town was gone.' && /✔ kich-ban-v1\.md/.test(ra.tomTat)
   return JSON.stringify(ra)
 }
 

@@ -977,6 +977,9 @@ async function chay() {
   await kiem('chỉ mở được các trang liên quan tới công việc', () => {
     assert.strictEqual(trinhDuyet.duocPhepMo('https://www.youtube.com/watch?v=x'), true)
     assert.strictEqual(trinhDuyet.duocPhepMo('https://claude.ai'), true)
+    assert.strictEqual(trinhDuyet.duocPhepMo('https://chatgpt.com/'), true)
+    assert.strictEqual(trinhDuyet.duocPhepMo('https://auth.openai.com/log-in'), true)
+    assert.strictEqual(trinhDuyet.duocPhepMo('https://fakechatgpt.com/'), false, 'không khớp nửa tên miền')
     assert.strictEqual(trinhDuyet.duocPhepMo('https://accounts.google.com/signin'), true)
     assert.strictEqual(trinhDuyet.duocPhepMo('https://trang-la.example.com'), false)
     assert.strictEqual(trinhDuyet.duocPhepMo('file:///etc/passwd'), false)
@@ -2572,6 +2575,114 @@ async function chay() {
     assert.strictEqual(ds[0].prompt, tuClaude)
     assert.strictEqual(ds[0].dungNguyenVan, true)
     if (ds[1]) assert.strictEqual(ds[1].dungNguyenVan, false)
+  })
+
+  // =========================================================================
+  nhom('45. Kịch bản Cách 2 trên ChatGPT; nạp tệp cho Prompt ảnh')
+
+  await kiem('prompt một lần cho ChatGPT nói "canvas", cho Claude nói "artifact"; cùng dòng ## PHẦN n', () => {
+    const c = kichBanMod.taoPromptMotLan({ yeuCau: { soPhan: 8 }, noiViet: 'claude' })
+    const g = kichBanMod.taoPromptMotLan({ yeuCau: { soPhan: 8 }, noiViet: 'chatgpt' })
+    assert.ok(c.includes('artifact') && !c.includes('canvas'))
+    assert.ok(g.includes('canvas') && !/artifact/.test(g))
+    for (const p of [c, g]) assert.ok(p.includes('## PHẦN <số>') && p.includes('HẾT KỊCH BẢN') && p.includes('"tiếp"'))
+    assert.ok(/Nếu không mở được canvas/.test(g), 'ChatGPT không mở canvas vẫn phải ra đúng ## PHẦN n')
+    assert.ok(g.includes('KHÔNG viết lại hay rút gọn các phần đã có'))
+    assert.strictEqual(kichBanMod.taoPromptMotLan({ noiViet: 'la' }), kichBanMod.taoPromptMotLan({}), 'giá trị lạ thì về Claude')
+  })
+
+  await kiem('bài dán từ ChatGPT KHÔNG có canvas (nhiều câu trả lời nối nhau) vẫn tách đúng phần', () => {
+    const chu = 'Sure! Here is the outline...\n\n## PHẦN 1\nFirst part text.\n\nWant me to continue?\n## PHẦN 2\nSecond part.\nHẾT KỊCH BẢN'
+    const r = kichBanMod.tachPhanBanDan(chu)
+    assert.strictEqual(r.phan.length, 2)
+    assert.strictEqual(r.phan[1], 'Second part.')
+  })
+
+  await kiem('tệp .txt có BOM và .json đọc được; JSON dán từ Word (nháy cong “ ”) vẫn nhận', async () => {
+    const d = thuMucTam('doc-tep-json')
+    fs.writeFileSync(path.join(d, 'mau.txt'), '﻿{"scene": "a", "style": "b"}')
+    fs.writeFileSync(path.join(d, 'mau.json'), '{"scene": "a", "style": "b"}')
+    const docTepMod = require('../src/doc-tep')
+    const a = await docTepMod.docTep(path.join(d, 'mau.txt'))
+    assert.ok(a.vanBan.startsWith('{'), 'BOM phải bị bỏ')
+    assert.strictEqual(pj.docMauJson(a.vanBan).ok, true)
+    const b = await docTepMod.docTep(path.join(d, 'mau.json'))
+    assert.strictEqual(pj.docMauJson(b.vanBan).ok, true)
+    assert.ok(docTepMod.DUOI_HO_TRO.includes('json'))
+    const word = '{“scene_description”: “The king’s hall at night”, “style”: “oil painting”}'
+    assert.strictEqual(pj.trongNhuJson(word), true)
+    const w = pj.docMauJson(word)
+    assert.strictEqual(w.ok, true); assert.strictEqual(w.mau.scene_description, "The king's hall at night")
+    // JSON hợp lệ có “ ” TRONG giá trị thì giữ nguyên, không bị "sửa" hỏng.
+    assert.strictEqual(pj.docMauJson('{"scene": "he said “go”"}').mau.scene, 'he said “go”')
+    const tl = pj.docTraLoiJson('[1] {“scene”: “x”}', { scene: 'a' })
+    assert.strictEqual(tl.prompt[1], '{"scene":"x"}')
+  })
+
+  await kiem('.docx chứa JSON (Word tách mỗi dòng một đoạn) đọc lại thành JSON hợp lệ', async () => {
+    const d = thuMucTam('docx-json')
+    const dd = path.join(d, 'mau.docx')
+    await require('../src/xuat-van-ban').ghiVanBan(dd, '{\n  "scene": "a",\n  "style": "oil, warm light"\n}')
+    const kq = await require('../src/doc-tep').docTep(dd)
+    assert.deepStrictEqual(pj.docMauJson(kq.vanBan).mau, { scene: 'a', style: 'oil, warm light' })
+  })
+
+  // =========================================================================
+  nhom('46. Rà toàn bộ mối nối giao diện ↔ preload ↔ tiến trình chính')
+
+  await kiem('mọi $("#id") trong app.js có trong index.html (hoặc do app.js tự dựng)', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'ui', 'app.js'), 'utf8')
+    const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8')
+    const coSan = new Set([...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]))
+    const tuDung = new Set([...app.matchAll(/id=\\?"([a-z0-9-]+)\\?"/g)].map((m) => m[1]))
+    const dung = [...new Set([...app.matchAll(/\$\('#([a-z0-9-]+)'\)/g)].map((m) => m[1]))]
+    assert.deepStrictEqual(dung.filter((i) => !coSan.has(i) && !tuDung.has(i)), [])
+  })
+
+  await kiem('mọi window.api.X có trong preload; mọi kênh preload có handler ở main.js', () => {
+    const app = fs.readFileSync(path.join(__dirname, '..', 'ui', 'app.js'), 'utf8')
+    const pre = fs.readFileSync(path.join(__dirname, '..', 'preload.js'), 'utf8')
+    const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8')
+    const api = new Set([...pre.matchAll(/^\s+(\w+):/gm)].map((m) => m[1]))
+    const goi = [...new Set([...app.matchAll(/window\.api\.(\w+)/g)].map((m) => m[1]))]
+    assert.deepStrictEqual(goi.filter((g) => !api.has(g)), [], 'giao diện gọi hàm preload không có')
+    const kenh = [...pre.matchAll(/goi\('([^']+)'/g)].map((m) => m[1])
+    assert.deepStrictEqual(kenh.filter((k) => !main.includes(`ipcMain.handle('${k}'`)), [], 'kênh IPC không có handler')
+  })
+
+  await kiem('mọi id trong index.html là duy nhất (trùng id là nút này bấm ra hành động nút kia)', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8')
+    const ids = [...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1])
+    assert.deepStrictEqual(ids.filter((x, i) => ids.indexOf(x) !== i), [])
+  })
+
+  // =========================================================================
+  nhom('47. Workflow GitHub Actions + cấu hình đóng gói')
+
+  await kiem('workflow: kích bằng tag v*, --publish ghi rõ, GH_TOKEN, kiểm thử trước khi đóng gói, action Node 24', () => {
+    const yml = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'build.yml'), 'utf8')
+    assert.ok(/tags:\s*\['v\*'\]/.test(yml))
+    assert.ok(/electron-builder --win --publish always/.test(yml) && /electron-builder --mac --publish always/.test(yml))
+    assert.strictEqual((yml.match(/GH_TOKEN: \$\{\{ secrets\.GITHUB_TOKEN \}\}/g) || []).length, 2)
+    assert.strictEqual((yml.match(/needs: kiem-thu/g) || []).length, 2)
+    assert.ok(/permissions:\s*\n\s*contents: write/.test(yml))
+    assert.ok(/CSC_IDENTITY_AUTO_DISCOVERY: false/.test(yml))
+    // Node 20 đã bị GitHub khai tử (cảnh báo ở mọi lượt chạy 0.x) — dùng bản chạy Node 24.
+    assert.ok(!/actions\/(checkout|setup-node|upload-artifact)@v4/.test(yml), 'còn action v4 (Node 20)')
+    for (const a of ['actions/checkout@v5', 'actions/setup-node@v5', 'actions/upload-artifact@v5']) assert.ok(yml.includes(a), 'thiếu ' + a)
+    assert.ok(!/\t/.test(yml), 'YAML không được có tab')
+  })
+
+  await kiem('electron-builder: phát hành thật (không nháp), mỗi target một tên tệp, đóng gói đủ src/**', () => {
+    const pk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'))
+    const b = pk.build
+    assert.strictEqual(b.publish[0].provider, 'github')
+    assert.strictEqual(b.publish[0].releaseType, 'release')
+    assert.ok(b.files.includes('src/**/*'))
+    const ten = [b.nsis && b.nsis.artifactName, b.portable && b.portable.artifactName].filter(Boolean)
+    assert.strictEqual(new Set(ten).size, ten.length, 'nsis và portable phải khác tên tệp')
+    assert.ok(!('signAndEditExecutable' in (b.win || {})), 'không đặt signAndEditExecutable')
+    assert.ok(/Kịch bản/.test(b.releaseInfo.releaseNotes) && /Footage/.test(b.releaseInfo.releaseNotes), 'ghi chú phát hành phải nói đúng tính năng hiện có')
   })
 
   // =========================================================================

@@ -8,6 +8,10 @@ name: Đóng gói Tool Ý Tưởng
 permissions:
   contents: write
 
+# 0.6.2: actions/checkout, setup-node, upload-artifact lên @v5 (chạy Node 24).
+# Bản @v4 chạy Node 20 — GitHub đã khai tử, mọi lượt chạy 0.x đều hiện cảnh
+# báo "Node.js 20 is deprecated … forced to run on Node.js 24".
+
 jobs:
 
   # Tầng 1 chạy trên chính hệ điều hành đích, không chỉ trên Linux: đường dẫn,
@@ -19,8 +23,8 @@ jobs:
         may: [windows-latest, macos-latest]
     runs-on: ${{ matrix.may }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -31,8 +35,8 @@ jobs:
     needs: kiem-thu
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -58,17 +62,20 @@ jobs:
           exit 1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v4
+      # Bản cài đã nằm trên Releases — bản lưu ở đây chỉ để xem nhanh khi lỗi,
+      # giữ 7 ngày cho khỏi đầy kho (mỗi lượt ~700 MB).
+      - uses: actions/upload-artifact@v5
         with:
           name: windows
           path: dist/*.exe
+          retention-days: 7
 
   macos:
     needs: kiem-thu
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -92,9 +99,10 @@ jobs:
           # Không có chứng chỉ Apple thì phải tắt hẳn khâu tự dò chữ ký, nếu
           # không electron-builder dừng giữa chừng với "no identity found".
           CSC_IDENTITY_AUTO_DISCOVERY: false
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: macos
           path: |
             dist/*.dmg
             dist/*.zip
+          retention-days: 7

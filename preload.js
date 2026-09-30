@@ -57,7 +57,7 @@ contextBridge.exposeInMainWorld('api', {
   luuPhan: (duAnMa, phanSo, chu) => goi('kichban:luu-phan', { duAnMa, phanSo, chu }),
   gopKichBan: (duAnMa) => goi('kichban:gop', { duAnMa }),
   luuKichBanTrucTiep: (duAnMa, chu) => goi('kichban:luu-truc-tiep', { duAnMa, chu }),
-  promptMotLan: (duAnMa, skillId, yeuCau) => goi('kichban:prompt-mot-lan', { duAnMa, skillId, yeuCau }),
+  promptMotLan: (duAnMa, skillId, yeuCau, noiViet) => goi('kichban:prompt-mot-lan', { duAnMa, skillId, yeuCau, noiViet }),
   nhanBanDan: (duAnMa, chu) => goi('kichban:nhan-ban-dan', { duAnMa, chu }),
   uocKichBanApi: (duAnMa, skillId) => goi('kichban:uoc-api', { duAnMa, skillId }),
   vietTuDong: (duAnMa, skillId, yeuCau, lamLai) => goi('kichban:tu-dong', { duAnMa, skillId, yeuCau, lamLai }),
