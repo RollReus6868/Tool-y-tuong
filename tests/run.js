@@ -26,7 +26,8 @@ const kiemDuyet = require('../src/kiem-duyet')
 const promptAnh = require('../src/prompt-anh')
 const duAnMod = require('../src/du-an')
 const trinhDuyet = require('../src/trinh-duyet')
-const boLuatChinhSach = require('../src/bo-luat-chinh-sach.json')
+const skillKiemDuyet = require('../src/skill-kiem-duyet')
+const boLuatChinhSach = skillKiemDuyet.gopBoLuat([skillKiemDuyet.docMacDinh()])
 
 let soQua = 0
 const soTruot = []
@@ -816,8 +817,264 @@ async function chay() {
     assert.ok(boLuatChinhSach.luat.some((l) => l.mucDo === 'vàng'))
     for (const l of boLuatChinhSach.luat) {
       assert.ok(l.ma && l.ten && l.giaiThich && l.huongSua, 'luật thiếu trường: ' + l.ma)
-      assert.ok(Array.isArray(l.tuKhoa) && l.tuKhoa.length, 'luật không có từ khóa: ' + l.ma)
+      assert.deepStrictEqual(skillKiemDuyet.loiCuaLuat(l), [], 'luật hỏng: ' + l.ma)
     }
+  })
+
+  // --- 0.8.0: skill kiểm duyệt + rủi ro kiếm tiền ---------------------------
+  const quet = (chu) => kiemDuyet.quetChinhSach(chu, boLuatChinhSach)
+  const maCo = (chu) => quet(chu).co.map((c) => c.ma)
+  // 600 từ kể chuyện thuần, không có câu nhận định nào
+  const keThuan = Array.from({ length: 60 }, (_, i) =>
+    `Farmer number ${i} carried grain across the valley road before the autumn rain arrived.`).join(' ')
+
+  await kiem('skill .md: tách khối JSON "luat" khỏi phần hướng dẫn, bỏ phần đầu tệp', () => {
+    const md = '---\nname: thu\ndescription: x\n---\n# Chuẩn riêng\n\nĐừng tả máu.\n\n```json\n' +
+      '{"phienBan":"t1","luat":[{"ma":"a","ten":"A","mucDo":"vàng","tuKhoa":["pineapple"],"giaiThich":"g","huongSua":"h"}]}\n```\n\nHết.'
+    const s = skillKiemDuyet.docSkill(md, 'thu.md')
+    assert.deepStrictEqual(s.loi, [])
+    assert.strictEqual(s.luat.length, 1)
+    assert.strictEqual(s.phienBan, 't1')
+    assert.strictEqual(s.huongDan, '# Chuẩn riêng\n\nĐừng tả máu.\n\n\n\nHết.')
+    assert.strictEqual(s.luat[0].nhom, 'quang-cao', 'thiếu nhom thì mặc định là quảng cáo')
+  })
+
+  await kiem('skill vỡ JSON thì BÁO vỡ, không âm thầm nạp 0 luật', () => {
+    const s = skillKiemDuyet.docSkill('Chữ.\n```json\n{"luat":[{"ma":"a",}]}\n```', 'hong.md')
+    assert.strictEqual(s.luat.length, 0)
+    assert.ok(s.loi.some((l) => /Khối JSON bộ luật vỡ/.test(l)))
+    const j = skillKiemDuyet.docSkill('{"luat":[', 'hong.json')
+    assert.ok(j.loi.some((l) => /Tệp JSON vỡ/.test(l)))
+    assert.ok(skillKiemDuyet.docSkill('', 'rong.md').loi.length, 'tệp trống phải có lỗi')
+  })
+
+  await kiem('luật hỏng (regex sai, thiếu mức độ) bị loại VÀ được nêu tên; tệp .json có BOM vẫn đọc', () => {
+    const s = skillKiemDuyet.docSkill('﻿' + JSON.stringify({ luat: [
+      { ma: 'tot', ten: 'T', mucDo: 'đỏ', mau: ['\\bok\\w*'] },
+      { ma: 'regex-sai', ten: 'R', mucDo: 'đỏ', mau: ['(chua dong'] },
+      { ma: 'thieu-muc', ten: 'M', tuKhoa: ['x'] },
+      { ma: 'tot', ten: 'T2', mucDo: 'vàng', tuKhoa: ['y'] }
+    ] }), 'x.json')
+    assert.deepStrictEqual(s.luat.map((l) => l.ma), ['tot'])
+    assert.strictEqual(s.loi.length, 3)
+    assert.ok(s.loi.some((l) => /regex-sai/.test(l)) && s.loi.some((l) => /thieu-muc/.test(l)) && s.loi.some((l) => /lặp mã/.test(l)))
+  })
+
+  await kiem('gộp skill: trùng mã thì skill thêm SAU thắng, luật khác giữ nguyên', () => {
+    const them = skillKiemDuyet.docSkill(JSON.stringify({ luat: [
+      { ma: 'chinh-tri', ten: 'Chính trị (bản của tôi)', mucDo: 'đỏ', tuKhoa: ['parliament'] },
+      { ma: 'rieng', ten: 'Riêng', mucDo: 'vàng', tuKhoa: ['pineapple'] }] }), 'toi.json')
+    const bo = skillKiemDuyet.gopBoLuat([skillKiemDuyet.docMacDinh(), them])
+    assert.strictEqual(bo.luat.length, boLuatChinhSach.luat.length + 1)
+    const kq = kiemDuyet.quetChinhSach('The election went to parliament with a pineapple.', bo)
+    assert.deepStrictEqual(kq.co.map((c) => c.ma), ['chinh-tri', 'rieng'], 'election không còn khớp vì luật đã bị thay')
+    assert.strictEqual(kq.co[0].mucDo, 'đỏ')
+    assert.strictEqual(kq.co[0].nguonSkill, 'toi.json')
+  })
+
+  await kiem('chuẩn có sẵn: đủ 3 nhóm A/B/C, mọi luật hợp lệ, có hướng dẫn cho Claude và nguồn', () => {
+    const m = skillKiemDuyet.docMacDinh()
+    assert.deepStrictEqual(m.loi, [])
+    for (const n of skillKiemDuyet.NHOM) assert.ok(m.luat.some((l) => l.nhom === n), 'thiếu nhóm ' + n)
+    for (const ma of ['thieu-goc-nhin', 'khuon-mau', 'gay-soc', 'ai-chuyen-gia', 'y-te-sai', 'thu-ghet', 'tre-em', 'mo-dau-nhay-cam']) {
+      assert.ok(m.luat.some((l) => l.ma === ma), 'thiếu luật ' + ma)
+    }
+    assert.ok(/inauthentic/.test(m.huongDan) && /reused content/.test(m.huongDan))
+    assert.ok(/support\.google\.com\/youtube\/answer\/1311392/.test(m.huongDan))
+    assert.ok(!/"luat"\s*:\s*\[/.test(m.huongDan), 'khối JSON không được lọt vào prompt cho Claude')
+  })
+
+  await kiem('gốc từ khớp cả dạng chia ("decapitated"), nháy cong ’ khớp nháy thẳng, "Al Gore" không phải máu me', () => {
+    assert.ok(maCo('The king was decapitated at dawn.').includes('bao-luc'), 'bản cũ viết \\bdecapitat\\b nên không bao giờ khớp')
+    assert.ok(maCo('You won’t believe this.').includes('gay-soc'))
+    assert.ok(!maCo('Al Gore conceded that evening.').includes('bao-luc'))
+    assert.ok(maCo('The film was pure gore.').includes('bao-luc'))
+    assert.ok(maCo('It happened on 9/11 in New York.').includes('su-kien-nhay-cam'), 'từ khóa có ký tự / vẫn phải khớp')
+    assert.ok(!maCo('The webpage loaded slowly and the culture thrived.').length, 'không khớp nhầm vào giữa từ (cult ⊄ culture)')
+  })
+
+  await kiem('AI đóng vai chuyên gia: cờ đỏ nhóm kênh, xếp lên đầu, kèm câu ví dụ', () => {
+    const kq = quet('It rained. As a doctor, I recommend this remedy. I am a licensed attorney too. The election came later.')
+    assert.strictEqual(kq.co[0].ma, 'ai-chuyen-gia')
+    assert.strictEqual(kq.co[0].nhom, 'kenh')
+    assert.strictEqual(kq.co[0].soLan, 2)
+    assert.ok(/As a doctor/.test(kq.co[0].viDu[0]))
+    assert.ok(!maCo('He worked as a doctor in Ohio for years, and she was a licensed pilot.').includes('ai-chuyen-gia'), 'kể về người khác thì không gắn cờ')
+  })
+
+  await kiem('luật "phải có": thiếu nhận định riêng thì gắn cờ, có thì thôi, văn bản ngắn thì không xét', () => {
+    assert.ok(maCo(keThuan).includes('thieu-goc-nhin'))
+    const coNhanDinh = keThuan + ' I think this matters. What this means is simple. Ask yourself why. The lesson is patience.'
+    assert.ok(!maCo(coNhanDinh).includes('thieu-goc-nhin'))
+    assert.ok(!maCo('Rain fell across the valley for three days.').includes('thieu-goc-nhin'))
+    assert.deepStrictEqual(quet('Rain fell.').chuaXet, [{ ma: 'thieu-goc-nhin', nhomCon: 'chung-chung' }], 'ngắn quá thì ghi là CHƯA XÉT, không ngầm coi là đạt')
+    assert.strictEqual(kiemDuyet.baoCao('Rain fell.', { boLuat: boLuatChinhSach }).ruiRo.muc.find((m) => /^Chung chung/.test(m.ten)).mucDo, 'CHƯA ĐO')
+    const c = quet(keThuan).co.find((x) => x.ma === 'thieu-goc-nhin')
+    assert.ok(/Thấy 0 dấu hiệu trong 840 từ, cần ít nhất 1\./.test(c.chiTiet), c.chiTiet)
+  })
+
+  await kiem('ngưỡng số lần: chửi lác đác không gắn cờ (đã nới 7/2025), dày đặc mới gắn', () => {
+    assert.ok(!maCo('Well, shit. He left.').includes('chui-the'))
+    assert.ok(maCo('shit '.repeat(3) + 'fucking '.repeat(3)).includes('chui-the'))
+  })
+
+  await kiem('phạm vi mở đầu: chỉ xét đúng 75 từ đầu', () => {
+    assert.strictEqual(kiemDuyet.SO_TU_MO_DAU, 75)
+    const dem = (n) => Array.from({ length: n }, (_, i) => 'word' + i).join(' ')
+    assert.ok(maCo(dem(74) + ' murdered ' + dem(50)).includes('mo-dau-nhay-cam'), 'từ thứ 75 còn trong vùng')
+    assert.ok(!maCo(dem(75) + ' murdered ' + dem(50)).includes('mo-dau-nhay-cam'), 'từ thứ 76 đã ra ngoài')
+  })
+
+  await kiem('giống kịch bản cũ: ngưỡng 10/25 do tool đặt, bỏ qua bản y hệt (chính nó)', () => {
+    const a = Array.from({ length: 100 }, (_, i) => 'alpha' + i).join(' ')
+    const b = Array.from({ length: 100 }, (_, i) => 'beta' + i).join(' ')
+    const lai = a.split(' ').slice(0, 40).join(' ') + ' ' + b.split(' ').slice(0, 60).join(' ')
+    const kq = kiemDuyet.giongKichBanCu(lai, [{ ten: 'Cũ A', vanBan: a }, { ten: 'Khác', vanBan: 'x y z q w e r t' }, { ten: 'Chính nó', vanBan: lai }])
+    assert.strictEqual(kq.boQuaYHet, 1)
+    assert.strictEqual(kq.soBanSo, 2)
+    assert.strictEqual(kq.ds[0].ten, 'Cũ A')
+    assert.strictEqual(kq.caoNhat, 37.5)   // 36 cụm 5 từ trùng / 96
+    assert.strictEqual(kq.mucDo, 'ĐỎ')
+    assert.ok(/không phải con số YouTube công bố/.test(kq.ghiChuNguong))
+    assert.strictEqual(kiemDuyet.giongKichBanCu(b, [{ ten: 'Cũ A', vanBan: a }]).mucDo, 'XANH')
+  })
+
+  await kiem('bảng rủi ro kiếm tiền: tách A/B/C, chưa có bản gốc thì ghi CHƯA ĐO chứ không ghi XANH', () => {
+    const bc = kiemDuyet.baoCao('As a doctor, I say the king was decapitated. ' + keThuan, { boLuat: boLuatChinhSach, kichBanCu: [] })
+    const theo = Object.fromEntries(bc.ruiRo.muc.map((m) => [m.ten, m]))
+    assert.strictEqual(theo['Nội dung dùng lại (so với lời thoại gốc)'].mucDo, 'CHƯA ĐO')
+    assert.strictEqual(theo['Cùng khuôn với kịch bản cũ của kênh'].mucDo, 'CHƯA ĐO')
+    assert.strictEqual(theo['Nhân vật AI đóng vai chuyên gia'].mucDo, 'ĐỎ')
+    assert.strictEqual(theo['Chung chung hoặc lặp lại (dấu hiệu làm từ khuôn)'].mucDo, 'VÀNG')
+    assert.strictEqual(theo['Không thoả mãn hoặc gây khó chịu'].mucDo, 'XANH')
+    assert.strictEqual(theo['Chi tiết cụ thể (tên riêng, con số)'].mucDo, 'XANH', 'keThuan có 60 con số')
+    assert.strictEqual(theo['Giới hạn hoặc mất quảng cáo video'].mucDo, 'ĐỎ')
+    assert.strictEqual(theo['Nguy cơ gỡ video'].mucDo, 'XANH')
+    assert.deepStrictEqual([...new Set(bc.ruiRo.muc.map((m) => m.kieu))], ['A', 'B', 'C'])
+    assert.strictEqual(bc.ruiRo.mucDo, 'ĐỎ')
+    assert.ok(/không thấy hình ảnh, thumbnail, tiêu đề/.test(bc.ruiRo.ghiChu))
+    assert.ok(/Người kể tự nhận là chuyên gia/.test(bc.huongSua[0].viec), 'lỗi cấp kênh phải đứng đầu hướng sửa')
+
+    const sach = kiemDuyet.baoCao('Rain fell across the valley for three days. Farmers counted their losses quietly.', { boLuat: boLuatChinhSach, banGoc: 'completely unrelated words about tractors and engines here' })
+    assert.strictEqual(sach.ruiRo.mucDo, 'VÀNG', 'còn mục CHƯA ĐO thì không được kết luận sạch')
+    assert.strictEqual(sach.ruiRo.ketLuan, 'CHƯA ĐO ĐỦ — CHƯA KẾT LUẬN ĐƯỢC')
+  })
+
+  // --- 0.9.0: ba nhóm "không chân thực" của 2026 ------------------------------
+  await kiem('che tên riêng + con số: giữ từ đầu câu và chữ "I", gộp tên nhiều chữ thành một', () => {
+    assert.strictEqual(
+      kiemDuyet.cheTenRieng('In 1927 the river near New Orleans rose. I think John Smith saw it. He said, "Run, Tom."'),
+      'In tenrieng the river near tenrieng rose. I think tenrieng saw it. He said, "Run, tenrieng')
+  })
+
+  await kiem('trùng KHUÔN: đổi hết tên riêng và năm thì đo chữ thấp, đo khuôn vẫn 100%', () => {
+    const a = ('In 1927 John Carter left Memphis for Chicago with twelve dollars. He met Sarah Lane, who ran a diner on Maple Street. ' +
+      'The city council voted against him in 1931. ').repeat(8)
+    const b = a.replace(/John Carter/g, 'Elias Brown').replace(/Memphis/g, 'Atlanta').replace(/Chicago/g, 'Detroit')
+      .replace(/Sarah Lane/g, 'Ruth Hale').replace(/1927/g, '1934').replace(/1931/g, '1940').replace(/Maple/g, 'Oak')
+    const kq = kiemDuyet.giongKichBanCu(b, [{ ten: 'Video cũ', vanBan: a }])
+    assert.ok(kq.caoNhat < 25, 'đo chữ thô không tới mức đỏ: ' + kq.caoNhat)
+    assert.strictEqual(kq.khuonCaoNhat, 100)
+    assert.strictEqual(kq.mucDo, 'ĐỎ', 'mức chung lấy cái nặng hơn')
+    assert.ok(/15% \/ 35%/.test(kq.ghiChuNguong) && /không phải con số YouTube công bố/.test(kq.ghiChuNguong))
+    const khac = 'Rain fell across the valley for three days while farmers counted their losses quietly near the old mill.'
+    assert.strictEqual(kiemDuyet.giongKichBanCu(khac, [{ ten: 'Video cũ', vanBan: a }]).mucDo, 'XANH')
+  })
+
+  await kiem('độ cụ thể: truyện không tên không năm → VÀNG, có tên riêng và năm → XANH, ngắn → CHƯA ĐO', () => {
+    const chung = 'A poor boy walked to a small town one day and met an old man who gave him some bread. '.repeat(30)
+    const cuThe = 'In 1927 John Carter left Memphis for Chicago with twelve dollars and met Sarah Lane on Maple Street. '.repeat(30)
+    assert.deepStrictEqual([kiemDuyet.doCuThe(chung).moi1000, kiemDuyet.doCuThe(chung).mucDo], [0, 'VÀNG'])
+    assert.strictEqual(kiemDuyet.doCuThe(cuThe).mucDo, 'XANH')
+    assert.strictEqual(kiemDuyet.doCuThe('Rain fell.').mucDo, 'CHƯA ĐO')
+    assert.ok(/không phải con số YouTube công bố/.test(kiemDuyet.doCuThe(chung).ghiChuNguong))
+  })
+
+  await kiem('ngưỡng MẬT ĐỘ: từ mất mát lác đác không gắn cờ, dày đặc mới gắn', () => {
+    const nen = 'The harvest came late that year and the market stayed open until dusk. '
+    const thua = nen.repeat(80) + 'The old king died. His widow wept at the funeral. They buried him. Grief came. Death again. He was dead. A tragedy. She mourned.'
+    assert.ok(!maCo(thua).includes('dau-thuong-lap-lai'), '8 lần trong ~1.000 từ là kể chuyện bình thường')
+    const day = 'The king died and the widow wept at the funeral. Her son was dead by morning. '.repeat(20)
+    const c = quet(day).co.find((x) => x.ma === 'dau-thuong-lap-lai')
+    assert.ok(c && /lần \/ 1\.000 từ \(ngưỡng 15\)/.test(c.chiTiet), c && c.chiTiet)
+  })
+
+  await kiem('luật 2026: cốt truyện đúc sẵn, ép cảm xúc, động vật gặp nạn, tin cần kiểm chứng, câu giờ', () => {
+    assert.ok(maCo('A poor waitress helped a homeless man, unaware that he was a billionaire.').includes('cot-truyen-khuon'))
+    assert.ok(maCo('The humble janitor had no clue. Years later the billionaire returned.').includes('cot-truyen-khuon'))
+    assert.ok(!maCo('The janitor swept the hall and went home to his family.').includes('cot-truyen-khuon'))
+    assert.ok(maCo('It will break your heart. Everyone burst into tears. It will give you chills.').includes('thao-tung-cam-xuc'))
+    assert.ok(!maCo('It was heartbreaking.').includes('thao-tung-cam-xuc'), 'một câu thì chưa phải công thức')
+    assert.ok(maCo('The puppy was left chained and shivering in the snow.').includes('dong-vat-gap-nan'))
+    assert.ok(maCo('An abandoned kitten sat by the road.').includes('dong-vat-gap-nan'))
+    assert.ok(!maCo('The dog ran across the field to greet him.').includes('dong-vat-gap-nan'))
+    assert.ok(maCo('Breaking news: the singer has just passed away.').includes('su-kien-bia'))
+    assert.ok(maCo('But first, a story. More on that later. Stick around. As I said before, wait.').includes('keo-dai-thoi-luong'))
+    assert.ok(maCo('Type amen. Like if you agree. Share this video with a friend.').includes('keu-goi-tuong-tac'))
+  })
+
+  await kiem('bảng rủi ro gom cờ theo nhomCon — skill thêm sau tự rơi đúng dòng "khó chịu"', () => {
+    const them = skillKiemDuyet.docSkill(JSON.stringify({ luat: [
+      { ma: 'cua-toi', ten: 'Luật của tôi', nhom: 'kenh', nhomCon: 'kho-chiu', mucDo: 'đỏ', tuKhoa: ['pineapple'] }] }), 'toi.json')
+    const bo = skillKiemDuyet.gopBoLuat([skillKiemDuyet.docMacDinh(), them])
+    const dong = (chu) => kiemDuyet.baoCao(chu, { boLuat: bo }).ruiRo.muc.find((m) => m.ten === 'Không thoả mãn hoặc gây khó chịu')
+    assert.strictEqual(dong('A pineapple fell.').mucDo, 'ĐỎ')
+    assert.ok(/Luật của tôi \(pineapple\)/.test(dong('A pineapple fell.').lyDo))
+    assert.strictEqual(dong('A pear fell.').mucDo, 'XANH')
+    for (const l of skillKiemDuyet.docMacDinh().luat.filter((x) => x.nhom === 'kenh')) {
+      assert.ok(['chung-chung', 'kho-chiu', 'ai-chuyen-gia'].includes(l.nhomCon), 'luật cấp kênh thiếu nhomCon: ' + l.ma)
+    }
+  })
+
+  await kiem('giao diện Youwee: màu chỉ đi qua token, đủ 6 chủ đề × sáng/tối, phông kèm theo, tệp chủ đề nạp trước app', () => {
+    const fs2 = require('fs'); const path2 = require('path')
+    const goc = path2.join(__dirname, '..', 'ui')
+    const css = fs2.readFileSync(path2.join(goc, 'style.css'), 'utf8')
+    const html = fs2.readFileSync(path2.join(goc, 'index.html'), 'utf8')
+    const js = fs2.readFileSync(path2.join(goc, 'giao-dien.js'), 'utf8')
+    // Một mã hex lọt vào là chỗ đó đứng yên khi đổi chủ đề, và chế độ sáng dễ ra chữ trắng nền trắng.
+    const hex = (css.match(/#[0-9a-fA-F]{3,8}\b/g) || []).filter((m) => m.toLowerCase() !== '#fff')
+    assert.deepStrictEqual(hex, [], 'style.css có mã màu viết cứng')
+    for (const t of ['ocean', 'midnight', 'aurora', 'forest', 'candy']) {
+      assert.ok(css.includes(`[data-chu-de="${t}"]`) && css.includes(`.dark[data-chu-de="${t}"]`), 'thiếu chủ đề ' + t)
+      assert.ok(js.includes(`'${t}'`), 'giao-dien.js thiếu chủ đề ' + t)
+    }
+    assert.ok(/#man-che\[hidden\]\s*\{\s*display:\s*none/.test(css), 'luật chống lớp phủ che cả app phải còn nguyên')
+    for (const f of (css.match(/url\("([^"]+)"\)/g) || [])) {
+      assert.ok(fs2.existsSync(path2.join(goc, f.slice(5, -2))), 'thiếu tệp phông: ' + f)
+    }
+    assert.ok(html.indexOf('giao-dien.js') > 0 && html.indexOf('giao-dien.js') < html.indexOf('<body'), 'phải nạp ở <head> để không chớp màu lúc mở')
+    assert.ok(!/<script(?![^>]*src=)/.test(html), 'CSP cấm script viết thẳng trong trang')
+    assert.strictEqual((html.match(/class="muc"[^>]*title="/g) || []).length, 12, 'thu gọn thanh bên thì tên mục chỉ còn ở tooltip')
+    assert.ok(/try \{ return localStorage/.test(js) && /try \{ localStorage\.setItem/.test(js), 'localStorage phải bọc try/catch')
+  })
+
+  await kiem('prompt nhờ Claude soi lại: có chuẩn, có cờ máy thấy, có kịch bản, không lẫn khối JSON luật', () => {
+    const kb = 'As a doctor, I say hello.'
+    const bc = kiemDuyet.baoCao(kb, { boLuat: boLuatChinhSach })
+    const p = skillKiemDuyet.taoPromptSoiLai({ kichBan: kb, cacSkill: [skillKiemDuyet.docMacDinh()], baoCao: bc })
+    assert.ok(p.indexOf('===== CHUẨN KIỂM DUYỆT =====') < p.indexOf('===== MÁY QUÉT ĐÃ THẤY'))
+    assert.ok(p.indexOf('===== MÁY QUÉT ĐÃ THẤY') < p.indexOf('===== KỊCH BẢN ====='))
+    assert.ok(p.endsWith('===== KỊCH BẢN =====\n' + kb))
+    assert.ok(/\[cờ đỏ\] Người kể tự nhận là chuyên gia.*khớp: as a doctor/.test(p))
+    assert.ok(!/"tuKhoa"/.test(p))
+    const khongBaoCao = skillKiemDuyet.taoPromptSoiLai({ kichBan: kb, cacSkill: [] })
+    assert.ok(!/===== (MÁY QUÉT ĐÃ THẤY|CHUẨN KIỂM DUYỆT)/.test(khongBaoCao))
+  })
+
+  await kiem('nối dây 0.8.0: main dùng skill (không còn tệp JSON cũ), preload + store + giao diện đủ khoá', () => {
+    const fs2 = require('fs'); const path2 = require('path')
+    const doc = (t) => fs2.readFileSync(path2.join(__dirname, '..', t), 'utf8')
+    assert.ok(!/bo-luat-chinh-sach\.json/.test(doc('main.js')))
+    for (const kenh of ['skillkd:danh-sach', 'skillkd:them', 'skillkd:xoa', 'skillkd:xuat-mac-dinh', 'kiemduyet:prompt-soi-lai']) {
+      assert.ok(doc('main.js').includes(`ipcMain.handle('${kenh}'`), 'main thiếu ' + kenh)
+      assert.ok(doc('preload.js').includes(`goi('${kenh}'`), 'preload thiếu ' + kenh)
+    }
+    const store = require('../src/store')
+    assert.ok(store.KHOA_PHUC_TAP.includes('khoSkillKiemDuyet'))
+    assert.deepStrictEqual(store.CAI_DAT_MAC_DINH.khoSkillKiemDuyet, [])
+    assert.ok(/KHOA_PHUC_TAP = \[[^\]]*'khoSkillKiemDuyet'/.test(doc('ui/app.js')))
+    assert.ok(require('../package.json').build.files.includes('src/**/*'), 'tệp skill .md phải nằm trong bản đóng gói')
   })
 
   await kiem('báo cáo cho ra hướng sửa CỤ THỂ, không phải câu chung chung', () => {
@@ -2925,7 +3182,7 @@ async function chay() {
     assert.throws(() => trinhDuyet.scriptGoiTrongTrang('https://trends.google.com.evil.com/trends/api/x'))
   })
 
-  await kiem('giao diện: đủ ô tinh chỉnh ngay trong mục, khoá cài đặt tuKhoaHot, phiên bản 0.7.0', () => {
+  await kiem('giao diện: đủ ô tinh chỉnh ngay trong mục, khoá cài đặt tuKhoaHot', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'ui', 'index.html'), 'utf8')
     for (const id of ['tk-geo', 'tk-thoi-gian', 'tk-so-tu-khoa', 'tk-so-tu-toi-thieu', 'tk-tu-loai-tru', 'tk-ts-nhu-cau', 'tk-ts-xu-huong',
       'tk-ts-co-hoi', 'tk-mo-rong-az', 'tk-chua-linh-vuc', 'tk-dung-trends', 'tk-dung-trang-yt', 'tk-dung-api', 'nut-tra-tu-khoa', 'bang-tu-khoa']) {
@@ -2934,7 +3191,7 @@ async function chay() {
     const { CAI_DAT_MAC_DINH } = require('../src/store')
     assert.deepStrictEqual(CAI_DAT_MAC_DINH.tuKhoaHot, {})
     const pk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'))
-    assert.strictEqual(pk.version, '0.7.0')
+    assert.ok(/^\d+\.\d+\.\d+$/.test(pk.version))
     assert.ok(/Từ khóa hot/.test(pk.build.releaseInfo.releaseNotes))
   })
 

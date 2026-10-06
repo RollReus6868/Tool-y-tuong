@@ -249,45 +249,162 @@ function gopCumLienTiep(trung) {
 }
 
 // ---------------------------------------------------------------------------
+// 2b. Độ giống KỊCH BẢN CŨ của chính kênh
+//
+// "Nội dung không chân thực" là lỗi xét trên CẢ KÊNH: các video na ná nhau,
+// cùng một khuôn chỉ đổi danh từ. Soi một kịch bản riêng lẻ thì không thấy —
+// phải so nó với các kịch bản đã viết trước đó.
+// ---------------------------------------------------------------------------
+
+// Che tên riêng và con số rồi mới so. Hai video làm từ MỘT KHUÔN chỉ đổi tên
+// nhân vật, địa danh, năm tháng thì gần như không trùng cụm 5 từ nào (cụm nào
+// cũng dính một cái tên) — đo chữ thô báo xanh trong khi đây đúng là thứ YouTube
+// gọi là "format sao chép tới mức các video thay thế được cho nhau".
+const TU_CHE = 'tenrieng'
+function cheTenRieng(chu) {
+  return tachCau(chu).map((cau) => cau.split(/\s+/).map((tu, i) => {
+    if (/\d/.test(tu)) return TU_CHE
+    // Từ mở ngoặc kép ("Run,") là đầu câu thoại, không phải tên riêng.
+    if (i > 0 && /^\p{Lu}/u.test(tu) && !/^I(['’]\w+)?[.,!?;:]*$/.test(tu)) return TU_CHE
+    return tu
+  }).join(' ').replace(new RegExp(`(${TU_CHE}\\s+)+${TU_CHE}`, 'g'), TU_CHE)).join(' ')
+}
+
+// Độ cụ thể: số tên riêng + con số trên mỗi 1.000 từ. Kịch bản AI làm từ khuôn
+// thường "a poor boy", "a small town", "one day" — không tên, không năm, không
+// nơi chốn. Đó là mặt chữ của "nội dung chung chung".
+function doCuThe(chu, { soTuToiThieu = 400, nguong = 8 } = {}) {
+  const soTu = demTu(chu)
+  if (soTu < soTuToiThieu) return { soTu, moi1000: null, mucDo: 'CHƯA ĐO', nguong }
+  const soChiTiet = cheTenRieng(chu).split(/\s+/).filter((t) => t === TU_CHE).length
+  const moi1000 = Math.round((soChiTiet / soTu) * 10000) / 10
+  return {
+    soTu, soChiTiet, moi1000, nguong,
+    mucDo: moi1000 < nguong ? 'VÀNG' : 'XANH',
+    ghiChuNguong: `Ngưỡng ${nguong} chi tiết / 1.000 từ là do tool này đặt ra, không phải con số YouTube công bố.`
+  }
+}
+
+function giongKichBanCu(kichBan, cacBanCu = []) {
+  const che = cheTenRieng(kichBan)
+  const tatCa = cacBanCu
+    .map((b) => ({
+      ten: b.ten,
+      tyLe: doGiongBanGoc(kichBan, b.vanBan).tyLe,
+      tyLeKhuon: doGiongBanGoc(che, cheTenRieng(b.vanBan)).tyLe
+    }))
+    .sort((a, b) => Math.max(b.tyLe, b.tyLeKhuon) - Math.max(a.tyLe, a.tyLeKhuon))
+  // Trùng từ 90% trở lên là CHÍNH kịch bản này (dán vào kiểm mà không chọn dự
+  // án của nó) chứ không phải "cùng khuôn" — tính vào là báo đỏ oan.
+  const ds = tatCa.filter((d) => d.tyLe < 90)
+  const caoNhat = ds.reduce((m, d) => Math.max(m, d.tyLe), 0)
+  const khuonCaoNhat = ds.reduce((m, d) => Math.max(m, d.tyLeKhuon), 0)
+  const muc = (v, vang, do_) => (v >= do_ ? 2 : (v >= vang ? 1 : 0))
+  return {
+    soBanSo: ds.length,
+    boQuaYHet: tatCa.length - ds.length,
+    caoNhat,
+    khuonCaoNhat,
+    mucDo: ['XANH', 'VÀNG', 'ĐỎ'][Math.max(muc(caoNhat, 10, 25), muc(khuonCaoNhat, 15, 35))],
+    ds: ds.filter((d) => d.tyLe > 0 || d.tyLeKhuon > 0).slice(0, 5),
+    ghiChuNguong: 'Ngưỡng do tool này đặt ra, không phải con số YouTube công bố: trùng chữ 10% / 25%, trùng khuôn (đã che tên riêng và con số) 15% / 35%. Mở đầu và kết thúc giống nhau giữa các video thì YouTube cho phép — đáng lo là khi phần thân cũng trùng.'
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 3. Quét chính sách
 // ---------------------------------------------------------------------------
 
+const SO_TU_MO_DAU = 75   // ≈ 30 giây đầu ở 150 từ/phút
+
+// Word và trình duyệt tự đổi ' thành ’ — không quy về một dạng thì "won't"
+// trong bộ luật không bao giờ khớp "won’t" trong kịch bản.
+function chuanHoaDeQuet(chu) {
+  return String(chu || '').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').toLowerCase()
+}
+
+function mauCuaLuat(l) {
+  const mau = []
+  // Ranh giới viết bằng "không đứng cạnh chữ/số" thay cho \b, vì \b hỏng với
+  // từ khóa bắt đầu hoặc kết thúc bằng ký tự không phải chữ ("9/11").
+  for (const tu of (l.tuKhoa || [])) {
+    mau.push(new RegExp(`(?<![\\p{L}\\p{N}])${thoatRegex(chuanHoaDeQuet(tu))}(?![\\p{L}\\p{N}])`, 'gu'))
+  }
+  for (const m of (l.mau || [])) {
+    try { mau.push(new RegExp(m, 'gi')) } catch (_) { /* skill-kiem-duyet.js đã báo lỗi cú pháp lúc nạp */ }
+  }
+  return mau
+}
+
 function quetChinhSach(chu, boLuat) {
   const luat = (boLuat && boLuat.luat) || []
-  const thap = String(chu || '').toLowerCase()
+  const thap = chuanHoaDeQuet(chu)
+  const moDau = thap.split(/\s+/).filter(Boolean).slice(0, SO_TU_MO_DAU).join(' ')
   const cau = tachCau(chu)
+  const cauThap = cau.map(chuanHoaDeQuet)
+  const soTu = demTu(chu)
   const co = []
+  const chuaXet = []   // luật "phải có" bị bỏ qua vì văn bản quá ngắn
 
   for (const l of luat) {
+    const vung = l.phamVi === 'mo-dau' ? moDau : thap
     const trung = []
-    for (const tu of (l.tuKhoa || [])) {
-      const mau = new RegExp(`\\b${thoatRegex(tu.toLowerCase())}\\b`, 'gi')
+    for (const mau of mauCuaLuat(l)) {
       let m
-      while ((m = mau.exec(thap)) !== null) {
-        trung.push({ tu, viTriKyTu: m.index })
-        if (trung.length > 40) break
+      while ((m = mau.exec(vung)) !== null) {
+        if (m[0] === '') { mau.lastIndex++; continue }
+        trung.push(m[0].trim())
+        if (trung.length > 200) break
       }
     }
-    if (!trung.length) continue
 
+    const chung = {
+      ma: l.ma, ten: l.ten, mucDo: l.mucDo, nhom: l.nhom || 'quang-cao', nhomCon: l.nhomCon || '',
+      giaiThich: l.giaiThich, huongSua: l.huongSua, nguonSkill: l.nguonSkill || ''
+    }
+
+    // Luật "phải có": gắn cờ khi THIẾU. Văn bản quá ngắn thì không xét, kẻo
+    // đoạn thử 50 từ nào cũng bị báo thiếu.
+    if (l.loai === 'phai-co') {
+      if (soTu < (l.soTuToiThieu || 300)) { chuaXet.push({ ma: l.ma, nhomCon: l.nhomCon || '' }); continue }
+      const moi1000 = (trung.length / soTu) * 1000
+      if (moi1000 >= (l.toiThieuMoi1000Tu || 1)) continue
+      co.push({
+        ...chung, soLan: trung.length, tuTrung: [], viDu: [],
+        chiTiet: `Thấy ${trung.length} dấu hiệu trong ${soTu.toLocaleString('vi-VN')} từ, cần ít nhất ${Math.ceil((l.toiThieuMoi1000Tu || 1) * soTu / 1000)}.`
+      })
+      continue
+    }
+
+    if (trung.length < (l.toiThieuLan || 1)) continue
+    // Ngưỡng MẬT ĐỘ: "died" xuất hiện 5 lần trong 11.000 từ là kể chuyện bình
+    // thường; 150 lần là cả video xoay quanh mất mát. Đếm tuyệt đối không phân
+    // biệt được hai trường hợp đó.
+    const moi1000 = soTu ? (trung.length / soTu) * 1000 : 0
+    if (l.nguongMoi1000Tu && moi1000 < l.nguongMoi1000Tu) continue
+    const tuTrung = [...new Set(trung)]
     co.push({
-      ma: l.ma,
-      ten: l.ten,
-      mucDo: l.mucDo,
-      giaiThich: l.giaiThich,
-      huongSua: l.huongSua,
+      ...chung,
       soLan: trung.length,
-      tuTrung: [...new Set(trung.map((t) => t.tu))],
-      viDu: cau.filter((c) => trung.some((t) => c.toLowerCase().includes(t.tu.toLowerCase()))).slice(0, 3)
+      tuTrung,
+      viDu: cau.filter((_, i) => tuTrung.some((t) => cauThap[i].includes(t))).slice(0, 3),
+      chiTiet: l.phamVi === 'mo-dau' ? `Nằm trong ${SO_TU_MO_DAU} từ đầu.`
+        : (l.nguongMoi1000Tu ? `${Math.round(moi1000 * 10) / 10} lần / 1.000 từ (ngưỡng ${l.nguongMoi1000Tu}).` : '')
     })
   }
+
+  // Đỏ trước vàng; trong cùng mức thì lỗi cấp kênh lên đầu.
+  const hang = (c) => (c.mucDo === 'đỏ' ? 0 : 10) + (c.nhom === 'kenh' ? 0 : c.nhom === 'cong-dong' ? 1 : 2)
+  co.sort((a, b) => hang(a) - hang(b))
 
   const soDo = co.filter((c) => c.mucDo === 'đỏ').length
   const soVang = co.filter((c) => c.mucDo === 'vàng').length
   return {
     co,
+    chuaXet,
     soDo,
     soVang,
+    soLuat: luat.length,
     ketLuan: soDo ? 'CÓ CỜ ĐỎ' : (soVang ? 'CÓ CỜ VÀNG' : 'KHÔNG GẮN CỜ NÀO'),
     canhBao: 'Quét từ khóa là GẮN CỜ RỦI RO, không phải xác nhận an toàn. Không có cờ nào không có nghĩa là kịch bản chắc chắn qua được chính sách.'
   }
@@ -298,12 +415,84 @@ function thoatRegex(s) {
 }
 
 // ---------------------------------------------------------------------------
+// 4. Bảng rủi ro kiếm tiền — gom mọi phép đo về đúng câu người dùng hỏi:
+//    "kịch bản này có làm kênh bị tắt kiếm tiền không, vì cái gì?"
+// ---------------------------------------------------------------------------
+
+function ruiRoKiemTien({ lap, giong, giongCu, chinhSach, cuThe }) {
+  const co = (ma) => ((chinhSach && chinhSach.co) || []).find((c) => c.ma === ma)
+  const muc = []
+  const them = (kieu, ten, mucDo, lyDo) => muc.push({ kieu, ten, mucDo, lyDo })
+
+  // A — tắt kiếm tiền cả kênh
+  if (!giong) them('A', 'Nội dung dùng lại (so với lời thoại gốc)', 'CHƯA ĐO', 'Chưa có bản gốc để so. Với kênh viết lại video người khác, đây là phép đo quan trọng nhất.')
+  else them('A', 'Nội dung dùng lại (so với lời thoại gốc)', giong.mucDo, `Trùng ${giong.tyLe}% cụm 5 từ với bản gốc.`)
+
+  const soNong = (lap.banDoNhiet.diemNong || []).length
+  const mucLap = lap.tyLeLap >= 6 ? 'ĐỎ' : (lap.tyLeLap >= 2 || lap.cauGanTrung.length >= 5 || soNong >= 3 ? 'VÀNG' : 'XANH')
+  them('A', 'Lặp ý trong bài (kéo dài thời lượng)', mucLap,
+    `${lap.tyLeLap}% nội dung nằm trong cụm lặp · ${lap.cauGanTrung.length} nhóm câu gần trùng · ${soNong} cặp đoạn xa nhau mà giống nhau.`)
+
+  if (!giongCu || !giongCu.soBanSo) them('A', 'Cùng khuôn với kịch bản cũ của kênh', 'CHƯA ĐO', 'Chưa có kịch bản của dự án nào khác để so.')
+  else them('A', 'Cùng khuôn với kịch bản cũ của kênh', giongCu.mucDo,
+    `So với ${giongCu.soBanSo} kịch bản khác: trùng chữ cao nhất ${giongCu.caoNhat}%, trùng khuôn (đã che tên riêng, con số) cao nhất ${giongCu.khuonCaoNhat}%` +
+    (giongCu.ds[0] ? ` — với "${giongCu.ds[0].ten}".` : '.'))
+
+  if (cuThe) them('A', 'Chi tiết cụ thể (tên riêng, con số)', cuThe.mucDo,
+    cuThe.moi1000 === null ? 'Kịch bản quá ngắn để xét.'
+      : `${cuThe.moi1000} chi tiết / 1.000 từ (ngưỡng ${cuThe.nguong}).` + (cuThe.mucDo === 'VÀNG' ? ' Ít tên người, nơi chốn, năm tháng — đọc lên giống truyện làm từ khuôn.' : ''))
+
+  // Ba nhóm của chính sách "nội dung không chân thực" (YouTube nêu rõ 7/2026).
+  // Gom theo trường nhomCon của luật chứ không theo mã cứng, để skill thêm sau
+  // tự rơi đúng dòng.
+  if (chinhSach) {
+    const nhomCon = [
+      ['chung-chung', 'Chung chung hoặc lặp lại (dấu hiệu làm từ khuôn)'],
+      ['kho-chiu', 'Không thoả mãn hoặc gây khó chịu'],
+      ['ai-chuyen-gia', 'Nhân vật AI đóng vai chuyên gia']
+    ]
+    for (const [ma, ten] of nhomCon) {
+      const ds = chinhSach.co.filter((c) => c.nhomCon === ma)
+      const chuaXet = (chinhSach.chuaXet || []).some((c) => c.nhomCon === ma)
+      const mucDo = ds.some((c) => c.mucDo === 'đỏ') ? 'ĐỎ' : (ds.length ? 'VÀNG' : (chuaXet ? 'CHƯA ĐO' : 'XANH'))
+      them('A', ten, mucDo, ds.length
+        ? ds.map((c) => c.ten + (c.tuTrung.length ? ` (${c.tuTrung.slice(0, 3).join(', ')})` : '')).join(' · ')
+        : (chuaXet ? 'Kịch bản quá ngắn để xét đủ.' : 'Không thấy dấu hiệu (máy chỉ đếm cụm từ — vẫn nên tự đọc lại).'))
+    }
+  }
+
+  // B, C — từng video
+  if (chinhSach) {
+    for (const [nhom, kieu, ten] of [['quang-cao', 'B', 'Giới hạn hoặc mất quảng cáo video'], ['cong-dong', 'C', 'Nguy cơ gỡ video']]) {
+      const ds = chinhSach.co.filter((c) => c.nhom === nhom)
+      const do_ = ds.filter((c) => c.mucDo === 'đỏ')
+      them(kieu, ten, do_.length ? 'ĐỎ' : (ds.length ? 'VÀNG' : 'XANH'),
+        ds.length ? ds.map((c) => c.ten).join(' · ') : 'Không gắn cờ nào.')
+    }
+  }
+
+  const coDo = muc.some((m) => m.mucDo === 'ĐỎ')
+  const coVang = muc.some((m) => m.mucDo === 'VÀNG')
+  const chuaDo = muc.some((m) => m.mucDo === 'CHƯA ĐO')
+  return {
+    muc,
+    // Còn mục chưa đo thì KHÔNG được kết luận sạch: phép đo quan trọng nhất
+    // (giống bản gốc) vắng mặt mà báo xanh là báo sai.
+    ketLuan: coDo ? 'RỦI RO CAO — SỬA TRƯỚC KHI SẢN XUẤT'
+      : (coVang ? 'CÓ ĐIỂM CẦN SỬA' : (chuaDo ? 'CHƯA ĐO ĐỦ — CHƯA KẾT LUẬN ĐƯỢC' : 'CHƯA THẤY RỦI RO')),
+    mucDo: coDo ? 'ĐỎ' : (coVang || chuaDo ? 'VÀNG' : 'XANH'),
+    ghiChu: 'A = tắt kiếm tiền cả kênh · B = video bị giới hạn/mất quảng cáo · C = gỡ video. Tool chỉ soi được CHỮ của kịch bản: không thấy hình ảnh, thumbnail, tiêu đề, giọng đọc.'
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Báo cáo tổng
 // ---------------------------------------------------------------------------
 
 function baoCao(kichBan, {
   banGoc = '',
   boLuat = null,
+  kichBanCu = null,
   tuMoiPhut = 150,
   nguongCauGanTrung = 0.5
 } = {}) {
@@ -323,8 +512,21 @@ function baoCao(kichBan, {
 
   const giong = banGoc ? doGiongBanGoc(kichBan, banGoc) : null
   const chinhSach = boLuat ? quetChinhSach(kichBan, boLuat) : null
+  const giongCu = kichBanCu ? giongKichBanCu(kichBan, kichBanCu) : null
+  const cuThe = doCuThe(kichBan)
+  const lap = {
+    tyLeLap,
+    cum4: cum4.slice(0, 40),
+    cum8: cum8.slice(0, 25),
+    cauGanTrung: ganTrung.slice(0, 20),
+    moDauCauLap: moDau.slice(0, 12),
+    banDoNhiet: nhiet
+  }
 
   return {
+    ruiRo: ruiRoKiemTien({ lap, giong, giongCu, chinhSach, cuThe }),
+    cuThe,
+    giongKichBanCu: giongCu,
     tongQuan: {
       soTu,
       soCau: cau.length,
@@ -332,24 +534,33 @@ function baoCao(kichBan, {
       phutDocUoc: Math.round((soTu / Math.max(1, tuMoiPhut)) * 10) / 10,
       doPhongPhuTu: soTu ? Math.round((new Set(tachTu(kichBan)).size / soTu) * 1000) / 10 : 0
     },
-    lap: {
-      tyLeLap,
-      cum4: cum4.slice(0, 40),
-      cum8: cum8.slice(0, 25),
-      cauGanTrung: ganTrung.slice(0, 20),
-      moDauCauLap: moDau.slice(0, 12),
-      banDoNhiet: nhiet
-    },
+    lap,
     giongBanGoc: giong,
     chinhSach,
-    huongSua: goiYSua({ tyLeLap, ganTrung, moDau, giong, nhiet })
+    huongSua: goiYSua({ tyLeLap, ganTrung, moDau, giong, nhiet, giongCu, chinhSach })
   }
 }
 
 // Gợi ý sửa phải CỤ THỂ, không được là câu chung chung kiểu "nên viết đa dạng
 // hơn" — người dùng đọc xong không biết phải mở đoạn nào ra sửa.
-function goiYSua({ tyLeLap, ganTrung, moDau, giong, nhiet }) {
+function goiYSua({ tyLeLap, ganTrung, moDau, giong, nhiet, giongCu, chinhSach }) {
   const y = []
+
+  // Lỗi cấp kênh và cờ đỏ lên đầu: đó là thứ làm mất tiền, lặp chữ chỉ là thứ
+  // làm video nhàm.
+  for (const c of ((chinhSach && chinhSach.co) || [])) {
+    if (c.mucDo !== 'đỏ' && c.nhom !== 'kenh') continue
+    y.push({
+      mucDo: c.mucDo === 'đỏ' ? 'đỏ' : 'vàng',
+      viec: `${c.ten}${c.tuTrung.length ? ' ("' + c.tuTrung.slice(0, 3).join('", "') + '")' : ''} — ${c.huongSua}`
+    })
+  }
+  if (giongCu && giongCu.mucDo !== 'XANH' && giongCu.ds[0]) {
+    y.push({
+      mucDo: giongCu.mucDo === 'ĐỎ' ? 'đỏ' : 'vàng',
+      viec: `Trùng ${giongCu.caoNhat}% với kịch bản "${giongCu.ds[0].ten}" — hai video đang dùng chung một khuôn. Đổi cấu trúc và cách dẫn dắt phần thân, không chỉ đổi tên nhân vật.`
+    })
+  }
 
   if (giong && giong.mucDo === 'ĐỎ') {
     y.push({
@@ -401,6 +612,11 @@ module.exports = {
   moDauCauLap,
   banDoNhiet,
   doGiongBanGoc,
+  giongKichBanCu,
+  cheTenRieng,
+  doCuThe,
+  ruiRoKiemTien,
+  SO_TU_MO_DAU,
   mucDoGiong,
   gopCumLienTiep,
   quetChinhSach,

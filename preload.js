@@ -74,6 +74,12 @@ contextBridge.exposeInMainWorld('api', {
   // Kiểm duyệt
   kiemDuyet: (chu, banGoc, duAnMa) => goi('kiemduyet:chay', { chu, banGoc, duAnMa }),
   xuatBaoCao: (html) => goi('kiemduyet:xuat-bao-cao', { html }),
+  // Skill kiểm duyệt
+  dsSkillKiemDuyet: () => goi('skillkd:danh-sach'),
+  themSkillKiemDuyet: () => goi('skillkd:them'),
+  xoaSkillKiemDuyet: (id) => goi('skillkd:xoa', { id }),
+  xuatSkillMacDinh: () => goi('skillkd:xuat-mac-dinh'),
+  promptSoiLai: (chu, duAnMa, baoCao) => goi('kiemduyet:prompt-soi-lai', { chu, duAnMa, baoCao }),
 
   // Prompt ảnh
   catCanh: (chu, duAnMa, gopCanh) => goi('promptanh:cat-canh', { chu, duAnMa, gopCanh }),

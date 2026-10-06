@@ -11,6 +11,104 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.9.0 — Ba nhóm "nội dung không chân thực" của 2026, và giao diện kiểu Youwee
+
+**Kiểm duyệt.** Giữa tháng 7/2026 YouTube viết lại chính sách "nội dung không
+chân thực" thành ba nhóm có ví dụ cụ thể. Bản 0.8.0 mới bắt được vài cụm từ của
+hai nhóm đầu; bản này soi đủ cả ba, mỗi nhóm một dòng riêng trong bảng **Rủi ro
+kiếm tiền**.
+
+- **Nhóm 1 — Chung chung hoặc lặp lại.**
+  - **Trùng khuôn với kịch bản cũ**: che hết tên riêng và con số rồi mới so. Hai
+    video làm từ một khuôn chỉ đổi tên nhân vật, địa danh, năm tháng thì đo chữ
+    thô gần như không trùng (cụm 5 từ nào cũng dính một cái tên) — bản 0.8.0 báo
+    xanh đúng trường hợp nguy hiểm nhất. Ngưỡng 15% / 35% do tool đặt.
+  - **Chi tiết cụ thể**: số tên riêng + con số trên 1.000 từ. Truyện "a poor boy,
+    a small town, one day" không tên không năm sẽ bị gắn vàng. Ngưỡng 8 do tool đặt.
+  - Luật mới: **cốt truyện đúc sẵn** ("unaware that he was a billionaire",
+    "instant karma", "taught him a lesson"…), **câu xin tương tác lặp lại**.
+- **Nhóm 2 — Không thoả mãn hoặc gây khó chịu.**
+  - **Câu ép cảm xúc dày đặc**, **động vật gặp nạn làm mồi cảm xúc**, **tin về
+    người thật cần kiểm chứng** ("has just passed away", "breaking news"),
+    **câu câu giờ / hứa mà chưa trả** ("more on that later", "stick around").
+  - **Mất mát, chết chóc dày đặc**: đo theo *mật độ* (trên 15 lần / 1.000 từ),
+    không đếm tuyệt đối — "died" 5 lần trong 11.000 từ là kể chuyện bình thường.
+    Máy không đo được có mạch truyện hay không; cờ này chỉ nhắc anh tự hỏi.
+- **Nhóm 3 — Nhân vật AI đóng vai chuyên gia**: giữ như 0.8.0.
+- Luật có thêm hai trường: `nhomCon` (cờ rơi vào dòng nào của bảng rủi ro — skill
+  anh thêm cũng dùng được) và `nguongMoi1000Tu` (ngưỡng mật độ).
+- Chuẩn có sẵn lên bản **2026-10-06.2**, 36 luật; phần chữ cho Claude viết lại
+  theo đúng ba nhóm, kèm dấu hiệu và cách sửa từng nhóm.
+
+**Giao diện kiểu Youwee** cho cả app:
+
+- Hai khung kính nổi (thanh bên + nội dung), ba quầng sáng phía sau, phông
+  **Nunito** (đóng kèm trong `ui/fonts`, không cần mạng), biểu tượng Lucide.
+- **6 chủ đề màu** ở Cài đặt → Giao diện: Hoàng hôn (mặc định, giữ màu cam cũ),
+  Đại dương, Nửa đêm, Cực quang, Rừng, Kẹo ngọt.
+- **Sáng / tối** bằng nút mặt trời · mặt trăng cuối thanh bên; nút bên cạnh **thu
+  gọn thanh bên** còn một cột biểu tượng. Cả ba lựa chọn được nhớ.
+- Nhãn trạng thái (NỔ VIEW, HOT, XONG, LỖI…) đổi sang viên nền nhạt thay vì tô
+  đặc; nút hành động chính của mỗi màn dùng dải chuyển màu.
+- Toàn bộ màu trong `style.css` đi qua token — có ca kiểm thử chặn mã hex viết
+  cứng, vì một mã hex lọt vào là chỗ đó đứng yên khi đổi chủ đề.
+- **Sửa một lỗi của chính bộ kiểm thử giao diện**: ảnh chụp màn đầu tiên thật ra
+  là màn mở trước đó (cửa sổ kiểm thử vẽ lười, `capturePage` trả khung hình cũ).
+  Giờ ép vẽ lại rồi mới chụp, và chụp thêm chế độ sáng + thanh bên thu gọn.
+- **Chưa nghiệm thu trên Windows thật**: hiệu ứng kính mờ (`backdrop-filter`) và
+  phông chữ mới chỉ thấy qua ảnh chụp trên Linux. Lớp trình duyệt trong app được
+  dời theo khi thu gọn thanh bên bằng sự kiện `resize` — chưa thử với một trang
+  YouTube đang mở thật.
+
+### 0.8.0 — Kiểm duyệt theo chính sách kiếm tiền YouTube, chuẩn là skill thay được
+
+Màn **Kiểm duyệt** trước giờ trả lời "kịch bản có lặp không, có từ nhạy cảm
+không". Bản này trả lời câu anh thật sự hỏi: **kịch bản này có làm mất tiền
+không, mất kiểu nào, vì đâu**.
+
+- **Bảng "Rủi ro kiếm tiền" ở đầu báo cáo**, tách ba kiểu vì cách sửa khác nhau:
+  - **A — tắt kiếm tiền cả kênh** (chính sách cấp kênh): nội dung dùng lại, lặp ý
+    trong bài, cùng khuôn với kịch bản cũ, thiếu góc nhìn riêng, câu sáo khuôn
+    mẫu / công thức câu view, nhân vật AI đóng vai chuyên gia.
+  - **B — video bị giới hạn hoặc mất quảng cáo** (14 nhóm nội dung không thân
+    thiện với nhà quảng cáo).
+  - **C — nguy cơ gỡ video.**
+  - Mục nào chưa có dữ liệu thì ghi **CHƯA ĐO**, và khi còn mục chưa đo thì kết
+    luận là "chưa kết luận được" chứ không báo xanh.
+- **Phép đo mới: cùng khuôn với kịch bản cũ của kênh.** "Nội dung không chân
+  thực" là lỗi xét trên cả kênh — các video na ná nhau — nên soi riêng một kịch
+  bản thì không bao giờ thấy. Tool so kịch bản đang kiểm với kịch bản mới nhất
+  của tối đa 15 dự án khác. Ngưỡng 10% / 25% **do tool đặt**, không phải số
+  YouTube công bố.
+- **Chuẩn kiểm duyệt giờ là skill** — khối "Chuẩn kiểm duyệt (skill)" ngay trong
+  màn Kiểm duyệt:
+  - Chuẩn có sẵn (bản 2026-10-06, 29 luật) nằm ở
+    `src/skill-kiem-duyet-mac-dinh.md`. Nó cũng chỉ là một skill, không có đường
+    riêng.
+  - **+ Thêm skill kiểm duyệt (.md / .json)**: khối JSON `"luat"` trong tệp để
+    máy quét; phần chữ đưa vào prompt cho Claude. Skill thêm sau **thay** luật
+    trùng mã — YouTube đổi chính sách thì thêm skill, không phải chờ bản tool.
+  - **Lưu chuẩn có sẵn ra tệp** để làm mẫu sửa, hoặc đưa vào Claude làm skill.
+  - Tệp vỡ JSON hoặc có luật sai (regex hỏng, thiếu mức độ) thì tool **nêu tên
+    từng chỗ không nạp được**, không âm thầm nạp 0 luật.
+- **Luật làm được nhiều hơn khớp từ**: biểu thức chính quy (`mau`), ngưỡng số
+  lần (`toiThieuLan`), chỉ xét 75 từ đầu (`phamVi: "mo-dau"`), và luật "phải có"
+  gắn cờ khi **thiếu** (dùng cho "không thấy nhận định riêng").
+- **Chép prompt nhờ Claude soi lại**: gồm chuẩn kiểm duyệt + các cờ máy đã thấy +
+  kịch bản. Máy chỉ đếm chữ, không phân biệt được "kể" với "tả", "tường thuật"
+  với "cổ vũ" — mà chính sách lại phân biệt đúng ở chỗ đó.
+- **Ba lỗi cũ của bộ quét, nguyên nhân thật**:
+  - Từ khóa dạng gốc từ (`decapitat`, `mutilat`) bị bọc trong `\b…\b` nên
+    **không bao giờ khớp** "decapitated" — luật bạo lực gần như chết từ 0.2.0.
+  - Word đổi `'` thành `’`, nên "won't believe" trong luật không khớp "won’t
+    believe" trong kịch bản mở từ tệp .docx.
+  - Luật chửi thề bật ngay từ lần đầu, trong khi YouTube đã nới (7/2025). Giờ
+    chỉ bật khi chửi dày đặc.
+- **Giới hạn phải nói thẳng**: tool chỉ soi **chữ** của kịch bản. Không thấy
+  hình ảnh, thumbnail, tiêu đề, giọng đọc — mà tiêu đề và thumbnail bị xét chặt
+  hơn thân video. Không có cờ nào không có nghĩa là giữ được kiếm tiền. Luật
+  "thiếu góc nhìn riêng" là phép đếm cụm từ, có thể báo oan.
+
 ### 0.7.0 — Từ khóa hot: gõ lĩnh vực, tool đề xuất từ khóa và chấm 0–100
 
 Màn **Đề xuất video** có thêm thẻ thứ ba **◆ Từ khóa hot**. Anh gõ lĩnh vực ở ô

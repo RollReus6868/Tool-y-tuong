@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" class="dark" data-chu-de="sunset" data-thanh-ben="day">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: https://i.ytimg.com https://i1.ytimg.com https://i2.ytimg.com https://i3.ytimg.com https://i4.ytimg.com https://i9.ytimg.com https://yt3.ggpht.com https://images.pexels.com https://cdn.pixabay.com https://pixabay.com https://upload.wikimedia.org https://tile.loc.gov">
 <title>Tool Ý Tưởng</title>
 <link rel="stylesheet" href="style.css">
+<script src="giao-dien.js"></script>
 </head>
 <body>
 
@@ -22,22 +23,22 @@
 
     <nav id="menu">
       <div class="nhom-menu">Nghiên cứu</div>
-      <button class="muc" data-man="y-tuong"><span class="ico">◈</span> Ý tưởng</button>
-      <button class="muc" data-man="de-xuat"><span class="ico">✦</span> Đề xuất video</button>
-      <button class="muc" data-man="kenh"><span class="ico">◎</span> Kênh theo dõi</button>
-      <button class="muc" data-man="trinh-duyet"><span class="ico">◐</span> Trình duyệt</button>
+      <button class="muc" data-man="y-tuong" title="Ý tưởng"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/> <path d="M9 18h6"/> <path d="M10 22h4"/></svg></span><span class="ten-muc">Ý tưởng</span></button>
+      <button class="muc" data-man="de-xuat" title="Đề xuất video"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/> <path d="M20 2v4"/> <path d="M22 4h-4"/> <circle cx="4" cy="20" r="2"/></svg></span><span class="ten-muc">Đề xuất video</span></button>
+      <button class="muc" data-man="kenh" title="Kênh theo dõi"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/> <path d="M4 6h.01"/> <path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/> <path d="M16.24 7.76A6 6 0 1 0 8.23 16.67"/> <path d="M12 18h.01"/> <path d="M17.99 11.66A6 6 0 0 1 15.77 16.67"/> <circle cx="12" cy="12" r="2"/> <path d="m13.41 10.59 5.66-5.66"/></svg></span><span class="ten-muc">Kênh theo dõi</span></button>
+      <button class="muc" data-man="trinh-duyet" title="Trình duyệt"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/> <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/> <path d="M2 12h20"/></svg></span><span class="ten-muc">Trình duyệt</span></button>
 
       <div class="nhom-menu">Sản xuất</div>
-      <button class="muc" data-man="loi-thoai"><span class="ico">≡</span> Lời thoại</button>
-      <button class="muc" data-man="kich-ban"><span class="ico">✎</span> Kịch bản</button>
-      <button class="muc" data-man="kiem-duyet"><span class="ico">⚑</span> Kiểm duyệt</button>
-      <button class="muc" data-man="prompt-anh"><span class="ico">▣</span> Prompt ảnh</button>
-      <button class="muc" data-man="footage"><span class="ico">◧</span> Footage thật</button>
+      <button class="muc" data-man="loi-thoai" title="Lời thoại"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="14" x="3" y="5" rx="2" ry="2"/> <path d="M7 15h4M15 15h2M7 11h2M13 11h4"/></svg></span><span class="ten-muc">Lời thoại</span></button>
+      <button class="muc" data-man="kich-ban" title="Kịch bản"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 21h8"/> <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></span><span class="ten-muc">Kịch bản</span></button>
+      <button class="muc" data-man="kiem-duyet" title="Kiểm duyệt"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/> <path d="m9 12 2 2 4-4"/></svg></span><span class="ten-muc">Kiểm duyệt</span></button>
+      <button class="muc" data-man="prompt-anh" title="Prompt ảnh"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/> <circle cx="9" cy="9" r="2"/> <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></span><span class="ten-muc">Prompt ảnh</span></button>
+      <button class="muc" data-man="footage" title="Footage thật"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/> <path d="M7 3v18"/> <path d="M3 7.5h4"/> <path d="M3 12h18"/> <path d="M3 16.5h4"/> <path d="M17 3v18"/> <path d="M17 7.5h4"/> <path d="M17 16.5h4"/></svg></span><span class="ten-muc">Footage thật</span></button>
 
       <div class="nhom-menu">Hệ thống</div>
-      <button class="muc" data-man="cai-dat"><span class="ico">⚙</span> Cài đặt</button>
-      <button class="muc" data-man="huong-dan"><span class="ico">?</span> Hướng dẫn</button>
-      <button class="muc" data-man="nhat-ky"><span class="ico">▤</span> Nhật ký</button>
+      <button class="muc" data-man="cai-dat" title="Cài đặt"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/> <circle cx="12" cy="12" r="3"/></svg></span><span class="ten-muc">Cài đặt</span></button>
+      <button class="muc" data-man="huong-dan" title="Hướng dẫn"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/> <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/> <path d="M12 17h.01"/></svg></span><span class="ten-muc">Hướng dẫn</span></button>
+      <button class="muc" data-man="nhat-ky" title="Nhật ký"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 12h-5"/> <path d="M15 8h-5"/> <path d="M19 17V5a2 2 0 0 0-2-2H4"/> <path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/></svg></span><span class="ten-muc">Nhật ký</span></button>
     </nav>
 
     <div id="hop-da-chon" title="Video anh đã tick ở màn Ý tưởng / Đề xuất / Kênh theo dõi — dùng được ở cả 4 màn Sản xuất">
@@ -50,6 +51,11 @@
       <div class="quota-nhan">Quota API hôm nay</div>
       <div id="quota-con-lai">chưa có khoá</div>
       <div id="quota-ngay" class="quota-phu"></div>
+    </div>
+
+    <div id="hang-giao-dien">
+      <button id="nut-che-do" class="nut-bieu-tuong" type="button" aria-label="Đổi sáng / tối"><svg class="mat-troi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/> <path d="M12 2v2"/> <path d="M12 20v2"/> <path d="m4.93 4.93 1.41 1.41"/> <path d="m17.66 17.66 1.41 1.41"/> <path d="M2 12h2"/> <path d="M20 12h2"/> <path d="m6.34 17.66-1.41 1.41"/> <path d="m19.07 4.93-1.41 1.41"/></svg><svg class="mat-trang" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg></button>
+      <button id="nut-thu-gon" class="nut-bieu-tuong" type="button" title="Thu gọn / mở rộng thanh bên" aria-label="Thu gọn hoặc mở rộng thanh bên"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/> <path d="M9 3v18"/> <path d="m16 15-3-3 3-3"/></svg></button>
     </div>
   </aside>
 
@@ -591,9 +597,10 @@
 
     <!-- ---------- KIỂM DUYỆT ---------- -->
     <section class="man" id="man-kiem-duyet">
-      <h1>Kiểm duyệt — chạy cục bộ, không cần AI</h1>
-      <p class="dan">Tức thì, miễn phí, và cho ra cùng kết quả mỗi lần chạy. Đo lặp nội dung, đo
-        <b>% trùng 5 từ liên tiếp với lời thoại gốc</b>, và quét bộ luật chính sách.</p>
+      <h1>Kiểm duyệt — soi rủi ro tắt kiếm tiền trước khi sản xuất</h1>
+      <p class="dan">Chạy ngay trên máy, miễn phí, cùng kết quả mỗi lần. Đo lặp nội dung, đo
+        <b>% trùng 5 từ liên tiếp với lời thoại gốc</b> và với <b>kịch bản cũ của kênh</b>, rồi quét bộ luật
+        theo chính sách kiếm tiền YouTube. Chuẩn kiểm duyệt là <b>skill thay được</b> — thêm ở khối bên dưới.</p>
 
       <div class="the the-du-an">
         <label class="nhan">Dự án</label>
@@ -602,6 +609,18 @@
       </div>
 
       <div class="the hop-video-chon" data-man="kiem-duyet"></div>
+
+      <div class="the" id="the-skill-kd">
+        <label class="nhan">Chuẩn kiểm duyệt (skill)</label>
+        <p class="ghi-chu">Mỗi skill là một tệp <b>.md</b> hoặc <b>.json</b>: khối JSON <code>"luat"</code> để máy quét, phần chữ để
+          đưa vào prompt nhờ Claude soi lại. Skill thêm sau <b>thay</b> luật trùng mã của skill đứng trước — YouTube đổi
+          chính sách thì thêm skill mới, không cần chờ bản tool mới.</p>
+        <div id="danh-sach-skill-kd"></div>
+        <div class="hang-nut">
+          <button id="nut-them-skill-kd" class="nut nut-phu">+ Thêm skill kiểm duyệt (.md / .json)</button>
+          <button id="nut-xuat-skill-mac-dinh" class="nut nut-phu">Lưu chuẩn có sẵn ra tệp (làm mẫu để sửa)</button>
+        </div>
+      </div>
 
       <div class="the">
         <label class="nhan" for="o-kiem-duyet">Kịch bản cần kiểm</label>
@@ -619,6 +638,7 @@
         </details>
         <div class="hang-nut">
           <button id="nut-kiem-duyet" class="nut nut-chinh nut-to">Kiểm duyệt</button>
+          <button id="nut-prompt-soi-lai" class="nut nut-phu">Chép prompt nhờ Claude soi lại</button>
           <button id="nut-xuat-bao-cao" class="nut nut-xanh">Xuất báo cáo HTML</button>
         </div>
       </div>
@@ -891,6 +911,13 @@
     <section class="man" id="man-cai-dat">
       <h1>Cài đặt</h1>
 
+      <div class="the" id="the-giao-dien">
+        <label class="nhan">Giao diện — chủ đề màu</label>
+        <div id="luoi-chu-de"></div>
+        <p class="ghi-chu">Đổi sáng / tối bằng nút mặt trời · mặt trăng ở cuối thanh bên; nút cạnh đó thu gọn thanh bên
+          còn một cột biểu tượng. Lựa chọn được nhớ cho lần mở sau.</p>
+      </div>
+
       <div class="the">
         <label class="nhan">Khoá API YouTube</label>
         <p class="ghi-chu">Miễn phí, không cần thẻ tín dụng. Mỗi khoá được 10.000 đơn vị/ngày, reset 0h giờ
@@ -1104,7 +1131,10 @@
           <li><b>Kênh theo dõi</b> → thêm các kênh đối thủ → quét mỗi ngày (3 đơn vị/kênh) để bắt video nổ sớm.</li>
           <li><b>Lời thoại</b> → tạo dự án → dán 2–4 link video → lấy phụ đề.</li>
           <li><b>Kịch bản</b> → chép prompt dàn ý → dán sang Claude → dán dàn ý về → làm từng phần một.</li>
-          <li><b>Kiểm duyệt</b> → chạy → sửa theo danh sách hướng sửa → chạy lại.</li>
+          <li><b>Kiểm duyệt</b> → chạy → đọc bảng <b>Rủi ro kiếm tiền</b> (A = tắt kiếm tiền cả kênh, B = video mất quảng cáo,
+            C = gỡ video) → sửa theo danh sách hướng sửa → chạy lại. Máy chỉ đếm chữ, không phân biệt được "kể" với "tả":
+            bấm <b>Chép prompt nhờ Claude soi lại</b> để có thêm một lượt soi bằng phán đoán. Muốn đổi chuẩn thì
+            <b>Thêm skill kiểm duyệt</b> ngay trong màn đó.</li>
           <li><b>Prompt ảnh</b> → cắt cảnh → khai nhân vật → sinh prompt → xuất cho Flow.</li>
         </ol>
       </div>

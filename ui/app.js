@@ -174,6 +174,7 @@ async function taiCaiDat() {
   veDanhSachKenh()
   veTaiKhoan()
   veSkill()
+  veSkillKiemDuyet()
   veKhoNhanVat()
   capNhatUocKichBan()
   capNhatTrangThaiYtDlp(g.coYtDlp)
@@ -1100,6 +1101,67 @@ $('#nut-mo-tep').onclick = async () => {
   $('#ghi-chu-nguon-kiem').className = 'ghi-chu ghi-chu-xanh'
 }
 
+// --- Skill kiểm duyệt --------------------------------------------------------
+async function veSkillKiemDuyet() {
+  const ds = await window.api.dsSkillKiemDuyet()
+  const hop = $('#danh-sach-skill-kd')
+  hop.innerHTML = ''
+  for (const s of ds) {
+    const dong = document.createElement('div')
+    dong.className = 'dong-khoa'
+    dong.style.flexWrap = 'wrap'
+    dong.innerHTML = `<span class="ten-khoa" title="${thoat(s.ten)}">${thoat(s.ten)}</span>
+      <span class="vien-muc ${s.coSan ? 'vien-xanh' : 'vien-xam'}">${s.coSan ? 'CÓ SẴN' : 'ĐÃ THÊM'}</span>
+      <span class="con">${s.soLuat} luật${s.phienBan ? ' · bản ' + thoat(s.phienBan) : ''} · ${s.coHuongDan ? 'có' : 'không có'} hướng dẫn cho Claude</span>`
+    if (!s.coSan) {
+      const xoa = document.createElement('button')
+      xoa.className = 'nut nut-do'
+      xoa.textContent = 'Xoá'
+      xoa.onclick = async () => {
+        if (!(await hoiCo(`Xoá skill kiểm duyệt "${s.ten}"?`, 'Xoá'))) return
+        await window.api.xoaSkillKiemDuyet(s.id)
+        await veSkillKiemDuyet()
+      }
+      dong.append(xoa)
+    }
+    if (s.loi.length) {
+      const loi = document.createElement('div')
+      loi.className = 'loi-skill'
+      loi.textContent = `⚠ ${s.loi.length} chỗ không nạp được: ` + s.loi.slice(0, 3).join(' · ') + (s.loi.length > 3 ? ' …' : '')
+      dong.append(loi)
+    }
+    hop.append(dong)
+  }
+}
+
+$('#nut-them-skill-kd').onclick = async () => {
+  const kq = await window.api.themSkillKiemDuyet()
+  if (kq.huy) return
+  if (!kq.ok) { await baoTin(kq.loi || 'Không đọc được tệp.'); return }
+  await veSkillKiemDuyet()
+  const s = kq.skill
+  await baoTin(`Đã thêm "${s.ten}": ${s.soLuat} luật cho máy quét, ${s.coHuongDan ? 'có' : 'không có'} hướng dẫn cho Claude.` +
+    (s.loi.length ? `\n\n${s.loi.length} chỗ không nạp được:\n- ${s.loi.join('\n- ')}` : '') +
+    '\n\nBấm Kiểm duyệt lại để áp dụng.')
+}
+
+$('#nut-xuat-skill-mac-dinh').onclick = async () => {
+  const kq = await window.api.xuatSkillMacDinh()
+  if (kq.ok) datTienDo({ phanTram: 100, viec: 'Đã lưu chuẩn kiểm duyệt', chiTiet: kq.duongDan, trangThai: 'xong' })
+}
+
+$('#nut-prompt-soi-lai').onclick = async () => {
+  const kq = await window.api.promptSoiLai($('#o-kiem-duyet').value.trim(), duAnHienTai, baoCaoHienTai)
+  if (!kq.ok) { await baoTin(kq.loi); return }
+  try {
+    await navigator.clipboard.writeText(kq.prompt)
+    await baoTin(`Đã chép prompt (${kq.soTu.toLocaleString('vi-VN')} từ, gồm chuẩn kiểm duyệt + ${baoCaoHienTai ? 'các cờ máy đã thấy' : 'chưa có cờ — nên bấm Kiểm duyệt trước'} + kịch bản).\nDán vào Claude để soi lại bằng phán đoán.`)
+  } catch (_) { await baoTin('Không chép được vào bộ nhớ tạm.') }
+}
+
+const LOP_MUC = { 'ĐỎ': 'vien-do', 'VÀNG': 'vien-vang', 'XANH': 'vien-xanh', 'CHƯA ĐO': 'vien-xam' }
+const TEN_NHOM = { kenh: 'A · tắt kiếm tiền kênh', 'quang-cao': 'B · quảng cáo video', 'cong-dong': 'C · gỡ video' }
+
 $('#nut-kiem-duyet').onclick = async () => {
   const chu = $('#o-kiem-duyet').value.trim()
   if (!chu && !duAnHienTai) { await baoTin('Chưa có kịch bản để kiểm.'); return }
@@ -1119,6 +1181,19 @@ function veBaoCao(bc, coBanGoc) {
     d.className = 'the ' + lop
     d.innerHTML = `<label class="nhan">${tieuDe}</label>` + noiDung
     hop.append(d)
+  }
+
+  // Bảng rủi ro kiếm tiền — câu trả lời cho đúng điều người dùng hỏi, đặt đầu tiên
+  if (bc.ruiRo) {
+    const r = bc.ruiRo
+    the('Rủi ro kiếm tiền',
+      `<div class="ket-luan-rui-ro muc-${r.mucDo === 'ĐỎ' ? 'do' : r.mucDo === 'VÀNG' ? 'vang' : 'xanh'}">${thoat(r.ketLuan)}</div>
+      <table class="bang-rui-ro">${r.muc.map((m) => `<tr>
+        <td class="cot-kieu">${m.kieu}</td>
+        <td class="cot-muc"><span class="vien-muc ${LOP_MUC[m.mucDo] || 'vien-xam'}">${m.mucDo}</span></td>
+        <td><b>${thoat(m.ten)}</b><div class="ly-do">${thoat(m.lyDo)}</div></td></tr>`).join('')}</table>
+      <p class="ghi-chu">${thoat(r.ghiChu)}</p>`,
+      r.mucDo === 'ĐỎ' ? 'the-do' : (r.mucDo === 'VÀNG' ? 'the-canh-bao' : ''))
   }
 
   const t = bc.tongQuan
@@ -1146,6 +1221,21 @@ function veBaoCao(bc, coBanGoc) {
     the('Độ giống lời thoại gốc',
       '<p class="ghi-chu">Chưa đo được: dự án này chưa có lời thoại gốc. Vào màn Lời thoại lấy phụ đề video tham khảo trước, rồi kiểm lại — đây là phép đo quan trọng nhất với kiểu kênh viết lại nội dung.</p>',
       'the-canh-bao')
+  }
+
+  // Cùng khuôn với kịch bản cũ
+  if (bc.giongKichBanCu && bc.giongKichBanCu.soBanSo) {
+    const k = bc.giongKichBanCu
+    the(`Cùng khuôn với kịch bản cũ của kênh — <span class="vien-muc ${LOP_MUC[k.mucDo]}">${k.mucDo}</span>`,
+      `<div class="luoi-so">
+        <div><span class="so-to">${k.caoNhat}%</span><span>trùng chữ cao nhất</span></div>
+        <div><span class="so-to">${k.khuonCaoNhat}%</span><span>trùng khuôn (đã che tên riêng, con số)</span></div>
+        <div><span class="so-to">${k.soBanSo}</span><span>kịch bản dự án khác đã so</span></div>
+      </div>
+      ${k.ds.length ? '<p class="ghi-chu">' + k.ds.map((d) => `${thoat(d.ten)}: chữ <b>${d.tyLe}%</b>, khuôn <b>${d.tyLeKhuon}%</b>`).join(' · ') + '</p>' : ''}
+      ${k.boQuaYHet ? `<p class="ghi-chu">Bỏ qua ${k.boQuaYHet} bản trùng từ 90% trở lên — coi là chính kịch bản này.</p>` : ''}
+      <p class="ghi-chu">${thoat(k.ghiChuNguong)}</p>`,
+      k.mucDo === 'ĐỎ' ? 'the-do' : (k.mucDo === 'VÀNG' ? 'the-canh-bao' : ''))
   }
 
   // Lặp
@@ -1183,11 +1273,13 @@ function veBaoCao(bc, coBanGoc) {
   if (bc.chinhSach) {
     const c = bc.chinhSach
     const lop = c.soDo ? 'the-do' : (c.soVang ? 'the-canh-bao' : '')
-    the(`Chính sách — ${thoat(c.ketLuan)}`,
+    the(`Chính sách — ${thoat(c.ketLuan)} <span class="ghi-chu">· đã quét ${c.soLuat} luật</span>`,
       (c.co.length ? c.co.map((f) => `
         <div class="co-chinh-sach co-${f.mucDo === 'đỏ' ? 'do' : 'vang'}">
-          <b>${thoat(f.ten)}</b> <span class="ghi-chu">${f.soLan} lần · ${thoat(f.tuTrung.slice(0, 6).join(', '))}</span>
+          <b>${thoat(f.ten)}</b><span class="vien-nhom">${TEN_NHOM[f.nhom] || thoat(f.nhom)}</span>
+          <span class="ghi-chu">${f.tuTrung.length ? f.soLan + ' lần · ' + thoat(f.tuTrung.slice(0, 6).join(', ')) : thoat(f.chiTiet)}</span>
           <div>${thoat(f.giaiThich)}</div>
+          ${f.viDu.length ? `<div class="vi-du">${f.viDu.slice(0, 2).map((v) => thoat(v.length > 220 ? v.slice(0, 220) + '…' : v)).join('<br>')}</div>` : ''}
           <div class="huong-sua">→ ${thoat(f.huongSua)}</div>
         </div>`).join('') : '<p class="ghi-chu">Không gắn cờ nào.</p>') +
       `<p class="ghi-chu canh-bao-manh">${thoat(c.canhBao)}</p>`, lop)
@@ -1215,6 +1307,10 @@ h1{border-bottom:3px solid #ff7a1a;padding-bottom:8px}
 </style></head><body>
 <h1>Báo cáo kiểm duyệt kịch bản</h1>
 <p>Lập lúc ${new Date().toLocaleString('vi-VN')} bằng Tool Ý Tưởng.</p>
+${baoCaoHienTai.ruiRo ? `<div class="the ${baoCaoHienTai.ruiRo.mucDo === 'ĐỎ' ? 'do' : baoCaoHienTai.ruiRo.mucDo === 'VÀNG' ? 'vang' : ''}">
+<h2>Rủi ro kiếm tiền: ${thoat(baoCaoHienTai.ruiRo.ketLuan)}</h2>
+${baoCaoHienTai.ruiRo.muc.map((m) => `<p><b>[${m.kieu}] ${thoat(m.ten)} — ${m.mucDo}</b><br>${thoat(m.lyDo)}</p>`).join('')}
+<p><i>${thoat(baoCaoHienTai.ruiRo.ghiChu)}</i></p></div>` : ''}
 <div class="the"><h2>Tổng quan</h2>
 <p>${baoCaoHienTai.tongQuan.soTu.toLocaleString('vi-VN')} từ · ${baoCaoHienTai.tongQuan.soCau} câu ·
 ${baoCaoHienTai.tongQuan.phutDocUoc} phút video · độ phong phú từ ${baoCaoHienTai.tongQuan.doPhongPhuTu}%</p></div>
@@ -3115,7 +3211,16 @@ window.smokeDuLieuMau = async function () {
     ],
     soUngVien: 63, coTrends: true, canhBao: [], ghiChuApi: 'Đã lấy sub kênh bằng API cho 212 video.'
   })
-  return { soDong: dong.length, daChon: videoDaChon.length, canhFootage: keHoachFt.canh.length, tuKhoa: bangTuKhoa.length }
+  // 0.8.0: kiểm duyệt thật qua IPC — kịch bản mẫu cố ý dính lỗi cấp kênh lẫn cờ quảng cáo
+  $('#o-kiem-duyet').value = 'As a doctor, I can tell you the shocking truth about the election. ' +
+    'In this video we will explore what happened. Let\u2019s dive in. ' + vanMau.repeat(6)
+  const kd = await window.api.kiemDuyet($('#o-kiem-duyet').value, null, null)
+  if (kd.ok) { baoCaoHienTai = kd.baoCao; veBaoCao(kd.baoCao, kd.coBanGoc) }
+  await veSkillKiemDuyet()
+  return {
+    soDong: dong.length, daChon: videoDaChon.length, canhFootage: keHoachFt.canh.length, tuKhoa: bangTuKhoa.length,
+    kiemDuyet: kd.ok ? kd.baoCao.ruiRo.ketLuan + ' · ' + kd.baoCao.chinhSach.co.map((c) => c.ma).join(',') : kd.loi
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3186,7 +3291,7 @@ window.smokeKiemCach2 = async function () {
 // Đây là loại lỗi im lặng nhất: giao diện ghi tên khoá khác với tên mà bên kia
 // đọc, không ai ném lỗi, chỉ là cài đặt "bấm xong không có tác dụng gì".
 // ---------------------------------------------------------------------------
-const KHOA_PHUC_TAP = ['khoaApi', 'kenhTheoDoi', 'khoSkill', 'taiKhoan', 'khoNhanVat', 'khoBoiCanh', 'oPrompt', 'tuKhoaHot']
+const KHOA_PHUC_TAP = ['khoaApi', 'kenhTheoDoi', 'khoSkill', 'taiKhoan', 'khoNhanVat', 'khoBoiCanh', 'oPrompt', 'tuKhoaHot', 'khoSkillKiemDuyet']
 
 window.smokeKiemKhoaCaiDat = function () {
   if (!caiDatHienTai) return ['chưa tải được cài đặt']

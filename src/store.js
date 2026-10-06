@@ -10,7 +10,7 @@ const path = require('path')
 // ứng không" — thiếu danh sách này là smoke báo đỏ oan.
 const KHOA_PHUC_TAP = [
   'khoaApi', 'kenhTheoDoi', 'khoSkill', 'taiKhoan',
-  'khoNhanVat', 'khoBoiCanh', 'oPrompt', 'tuKhoaHot'
+  'khoNhanVat', 'khoBoiCanh', 'oPrompt', 'tuKhoaHot', 'khoSkillKiemDuyet'
 ]
 
 const CAI_DAT_MAC_DINH = {
@@ -84,7 +84,10 @@ const CAI_DAT_MAC_DINH = {
   moHinhClaude: 'claude-opus-5-5',
 
   // 0.7.0 — tinh chỉnh mục Từ khóa hot (lưu ngay trong mục, xem chay-tu-khoa-hot.js)
-  tuKhoaHot: {}
+  tuKhoaHot: {},
+
+  // 0.8.0 — skill kiểm duyệt người dùng thêm (chuẩn có sẵn nằm trong src/)
+  khoSkillKiemDuyet: []     // [{ id, ten, noiDung, themLuc }]
 }
 
 function docJSON(duongDan, macDinh) {

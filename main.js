@@ -21,6 +21,7 @@ const ytDlp = require('./src/yt-dlp')
 const phuDe = require('./src/phu-de')
 const kichBan = require('./src/kich-ban')
 const kiemDuyet = require('./src/kiem-duyet')
+const skillKiemDuyet = require('./src/skill-kiem-duyet')
 const promptAnh = require('./src/prompt-anh')
 const { taoKhoDuAn } = require('./src/du-an')
 const trinhDuyet = require('./src/trinh-duyet')
@@ -1117,6 +1118,72 @@ function dangKyIPC() {
     return { ok: true, ...luu }
   })
 
+  // --- Skill kiểm duyệt -------------------------------------------------------
+  // Chuẩn có sẵn luôn đứng đầu; skill người dùng thêm đứng sau nên THẮNG khi
+  // trùng mã luật.
+  function cacSkillKiemDuyet(caiDat) {
+    return [
+      skillKiemDuyet.docMacDinh(),
+      ...(caiDat.khoSkillKiemDuyet || []).map((s) => ({ id: s.id, ...skillKiemDuyet.docSkill(s.noiDung, s.ten) }))
+    ]
+  }
+
+  const tomTatSkill = (s) => ({
+    id: s.id || '', ten: s.ten, coSan: !s.id, phienBan: s.phienBan,
+    soLuat: s.luat.length, coHuongDan: !!s.huongDan, loi: s.loi
+  })
+
+  ipcMain.handle('skillkd:danh-sach', () => cacSkillKiemDuyet(kho.docCaiDat()).map(tomTatSkill))
+
+  ipcMain.handle('skillkd:them', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(cuaSo, {
+      title: 'Chọn tệp skill kiểm duyệt',
+      properties: ['openFile'],
+      filters: [{ name: 'Skill kiểm duyệt (.md, .json, .txt)', extensions: ['md', 'markdown', 'json', 'txt'] }]
+    })
+    if (canceled || !filePaths.length) return { ok: false, huy: true }
+
+    const ten = path.basename(filePaths[0])
+    const noiDung = fs.readFileSync(filePaths[0], 'utf8')
+    const s = skillKiemDuyet.docSkill(noiDung, ten)
+    // Không nạp được gì thì KHÔNG lưu — lưu vào là danh sách hiện một skill
+    // "đang bật" mà thật ra không làm gì cả.
+    if (!s.luat.length && !s.huongDan) {
+      nhatKy.loi(`Skill kiểm duyệt ${ten} không dùng được: ${s.loi.join(' | ')}`)
+      return { ok: false, loi: `Tệp "${ten}" không dùng được.\n${s.loi.join('\n')}` }
+    }
+
+    const caiDat = kho.docCaiDat()
+    const id = 'kd' + Date.now().toString(36)
+    kho.ghiCaiDat({ ...caiDat, khoSkillKiemDuyet: [...(caiDat.khoSkillKiemDuyet || []), { id, ten, noiDung, themLuc: Date.now() }] })
+    nhatKy.tin(`Thêm skill kiểm duyệt: ${ten} — ${s.luat.length} luật, ${s.huongDan ? 'có' : 'không có'} hướng dẫn cho Claude, ${s.loi.length} lỗi`)
+    return { ok: true, skill: tomTatSkill({ id, ...s }) }
+  })
+
+  ipcMain.handle('skillkd:xoa', (_su, { id }) => {
+    const caiDat = kho.docCaiDat()
+    kho.ghiCaiDat({ ...caiDat, khoSkillKiemDuyet: (caiDat.khoSkillKiemDuyet || []).filter((s) => s.id !== id) })
+    return { ok: true }
+  })
+
+  ipcMain.handle('skillkd:xuat-mac-dinh', async () => {
+    const { canceled, filePath } = await dialog.showSaveDialog(cuaSo, {
+      title: 'Lưu chuẩn kiểm duyệt có sẵn ra tệp',
+      defaultPath: path.join(app.getPath('downloads'), 'SKILL-kiem-duyet-kiem-tien-youtube.md'),
+      filters: [{ name: 'Markdown', extensions: ['md'] }]
+    })
+    if (canceled || !filePath) return { ok: false, huy: true }
+    fs.writeFileSync(filePath, skillKiemDuyet.docMacDinh().noiDung, 'utf8')
+    return { ok: true, duongDan: filePath }
+  })
+
+  ipcMain.handle('kiemduyet:prompt-soi-lai', (_su, { chu, duAnMa, baoCao }) => {
+    const vanBan = chu && chu.trim() ? chu : (duAnMa ? khoDuAn.docKichBan(duAnMa) : '')
+    if (!vanBan.trim()) return { ok: false, loi: 'Chưa có kịch bản để soi.' }
+    const prompt = skillKiemDuyet.taoPromptSoiLai({ kichBan: vanBan, cacSkill: cacSkillKiemDuyet(kho.docCaiDat()), baoCao })
+    return { ok: true, prompt, soTu: (prompt.match(/\S+/g) || []).length }
+  })
+
   // --- Kiểm duyệt ------------------------------------------------------------
   ipcMain.handle('kiemduyet:chay', (_su, { chu, banGoc, duAnMa }) => {
     const caiDat = kho.docCaiDat()
@@ -1129,20 +1196,28 @@ function dangKyIPC() {
 
     let boLuat = null
     try {
-      boLuat = JSON.parse(fs.readFileSync(path.join(__dirname, 'src', 'bo-luat-chinh-sach.json'), 'utf8'))
+      boLuat = skillKiemDuyet.gopBoLuat(cacSkillKiemDuyet(caiDat))
     } catch (e) {
       nhatKy.loi('Không đọc được bộ luật chính sách: ' + e.message)
     }
 
+    // Kịch bản mới nhất của các dự án KHÁC — để bắt "cùng một khuôn giữa các
+    // video", lỗi mà soi riêng một kịch bản thì không bao giờ thấy.
+    const kichBanCu = khoDuAn.danhSach()
+      .filter((d) => d.ma !== duAnMa && d.soBanKichBan)
+      .slice(0, 15)
+      .map((d) => ({ ten: d.ten, vanBan: khoDuAn.docKichBan(d.ma) }))
+      .filter((d) => d.vanBan && d.vanBan.trim())
+
     baoTienDo({ phanTram: 50, viec: 'Kiểm duyệt kịch bản', khu: 'kiemduyet' })
-    const bc = kiemDuyet.baoCao(vanBan, { banGoc: goc, boLuat, tuMoiPhut: caiDat.tuMoiPhut })
+    const bc = kiemDuyet.baoCao(vanBan, { banGoc: goc, boLuat, kichBanCu, tuMoiPhut: caiDat.tuMoiPhut })
     baoTienDo({
       phanTram: 100, viec: 'Kiểm duyệt xong',
       chiTiet: `${bc.tongQuan.soTu} từ · lặp ${bc.lap.tyLeLap}%` +
         (bc.giongBanGoc ? ` · giống gốc ${bc.giongBanGoc.tyLe}%` : ''),
       trangThai: 'xong', khu: 'kiemduyet'
     })
-    nhatKy.tin(`Kiểm duyệt: ${bc.tongQuan.soTu} từ, lặp ${bc.lap.tyLeLap}%, chính sách ${bc.chinhSach ? bc.chinhSach.ketLuan : '—'}`)
+    nhatKy.tin(`Kiểm duyệt: ${bc.tongQuan.soTu} từ, lặp ${bc.lap.tyLeLap}%, chính sách ${bc.chinhSach ? bc.chinhSach.ketLuan : '—'}, kiếm tiền: ${bc.ruiRo.ketLuan}`)
     return { ok: true, baoCao: bc, coBanGoc: !!goc.trim() }
   })
 
@@ -1842,6 +1917,19 @@ async function chaySmoke() {
   fs.mkdirSync(thuMucAnh, { recursive: true })
   nhatKy.tin(`Smoke ghi ảnh vào: ${thuMucAnh}`)
 
+  // Cửa sổ smoke không được vẽ liên tục, nên hiệu ứng chuyển (transition) đứng
+  // hình giữa chừng và ảnh chụp ra trạng thái lưng chừng không có thật. Tắt hết
+  // hiệu ứng cho riêng lượt smoke để ảnh là trạng thái cuối.
+  await cuaSo.webContents.insertCSS('*, *::before, *::after { transition: none !important; animation: none !important; }')
+
+  // capturePage trả về khung hình ĐÃ VẼ GẦN NHẤT. Cửa sổ smoke vẽ lười, nên
+  // không ép vẽ lại thì ảnh "màn Ý tưởng" thật ra là màn mở trước đó — ảnh sai
+  // tên mà không có lỗi nào. Chờ hai nhịp vẽ rồi mới chụp.
+  const chupKhungMoi = async () => {
+    await cuaSo.webContents.executeJavaScript('new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(function () { r(1) }) }) })').catch(() => {})
+    return cuaSo.webContents.capturePage()
+  }
+
   // 0.6.1: đi lại đúng đường lỗi người dùng báo — mẫu JSON, sinh, đổi mẫu, sinh lại.
   const jsonMau = await cuaSo.webContents.executeJavaScript('window.smokeKiemJsonMau()')
     .then((c) => JSON.parse(c)).catch((e) => ({ ok: false, loi: e.message }))
@@ -1860,11 +1948,13 @@ async function chaySmoke() {
     .catch((e) => ({ loi: e.message }))
   nhatKy.tin('Smoke: dữ liệu mẫu — ' + JSON.stringify(mau))
 
+  // Các bước kiểm phía trên còn việc chạy trễ (đổi màn, vẽ lại) — chờ lắng rồi mới chụp.
+  await new Promise((r) => setTimeout(r, 700))
   for (const man of cacMan) {
     const ok = await cuaSo.webContents.executeJavaScript(`window.smokeMoMan('${man}')\n;undefined;`)
       .then(() => true).catch(() => false)
     await new Promise((r) => setTimeout(r, 420))
-    const anh = await cuaSo.webContents.capturePage()
+    const anh = await chupKhungMoi()
     fs.writeFileSync(path.join(thuMucAnh, `${man}.png`), anh.toPNG())
     nhatKy.tin(`Smoke: chụp màn ${man} — ${ok ? 'mở được' : 'KHÔNG mở được'}`)
     if (!ok) thieu.push(man)
@@ -1892,7 +1982,9 @@ async function chaySmoke() {
     ['prompt-anh', '#bang-canh', 'prompt-anh-bang-json'],
     ['cai-dat', '[data-khoa="khoaClaude"]', 'cai-dat-claude-api'],
     ['de-xuat', '#tk-geo', 'de-xuat-tu-khoa-cai-dat', 'tu-khoa'],
-    ['de-xuat', '#bang-tu-khoa', 'de-xuat-tu-khoa-bang', 'tu-khoa']
+    ['de-xuat', '#bang-tu-khoa', 'de-xuat-tu-khoa-bang', 'tu-khoa'],
+    ['kiem-duyet', '#ket-qua-kiem-duyet .bang-rui-ro', 'kiem-duyet-rui-ro'],
+    ['kiem-duyet', '#ket-qua-kiem-duyet .co-chinh-sach', 'kiem-duyet-co']
   ]
   for (const [man, chon, tenAnh, tabDeXuat] of khoiDuoiTamNhin) {
     await cuaSo.webContents.executeJavaScript(`window.smokeMoMan('${man}')\n;undefined;`).catch(() => {})
@@ -1910,10 +2002,39 @@ async function chaySmoke() {
       })()
     `).catch(() => {})
     await new Promise((r) => setTimeout(r, 360))
-    const anh = await cuaSo.webContents.capturePage()
+    const anh = await chupKhungMoi()
     fs.writeFileSync(path.join(thuMucAnh, `${tenAnh}.png`), anh.toPNG())
     nhatKy.tin(`Smoke: chụp riêng khối dưới tầm nhìn — ${tenAnh}`)
   }
+
+  // 0.9.0: giao diện Youwee. Chế độ SÁNG và thanh bên THU GỌN là hai trạng thái
+  // không ai mở ra khi kiểm tay — chữ trắng trên nền trắng hay biểu tượng bị cắt
+  // ở đó không ném exception nào. Chụp riêng rồi trả về trạng thái mặc định.
+  const chupGiaoDien = async (thayDoi, man, tenAnh, chon) => {
+    await cuaSo.webContents.executeJavaScript(`window.giaoDien.dat(${JSON.stringify(thayDoi)}); window.smokeMoMan('${man}')\n;undefined;`).catch(() => {})
+    if (chon) {
+      await cuaSo.webContents.executeJavaScript(`(function () { var o = document.querySelector('${chon}'); if (o) o.scrollIntoView({ block: 'start' }); })()`).catch(() => {})
+    }
+    await new Promise((r) => setTimeout(r, 520))
+    fs.writeFileSync(path.join(thuMucAnh, `${tenAnh}.png`), (await chupKhungMoi()).toPNG())
+  }
+  await chupGiaoDien({ cheDo: 'sang' }, 'y-tuong', 'sang-y-tuong')
+  await chupGiaoDien({ cheDo: 'sang' }, 'kiem-duyet', 'sang-kiem-duyet', '#ket-qua-kiem-duyet .bang-rui-ro')
+  await chupGiaoDien({ cheDo: 'sang', chuDe: 'ocean' }, 'cai-dat', 'sang-cai-dat-ocean')
+  await chupGiaoDien({ cheDo: 'toi', chuDe: 'midnight', thanhBen: 'gon' }, 'de-xuat', 'toi-thu-gon-midnight')
+  const giaoDien = await cuaSo.webContents.executeJavaScript(`
+    (function () {
+      var g = document.documentElement, kq = {};
+      kq.thuGon = Math.round(document.getElementById('sidebar').getBoundingClientRect().width);
+      kq.chuDe = g.getAttribute('data-chu-de');
+      window.giaoDien.dat({ cheDo: 'toi', chuDe: 'sunset', thanhBen: 'day' });
+      kq.coNunito = document.fonts.check('14px Nunito');
+      kq.toi = g.classList.contains('dark');
+      return kq;
+    })()
+  `).catch((e) => ({ loi: e.message }))
+  await new Promise((r) => setTimeout(r, 300))
+  nhatKy.tin('Smoke: giao diện — ' + JSON.stringify(giaoDien))
 
   const phanTuCanCo = [
     '#nhap-tu-khoa', '#nut-ghep', '#nut-tim', '#bang-ket-qua',
@@ -1924,6 +2045,11 @@ async function chaySmoke() {
     '#chon-du-an', '#nut-tao-du-an',
     '#nut-prompt-dan-y', '#o-dan-y', '#nut-luu-dan-y', '#danh-sach-phan',
     '#o-kiem-duyet', '#nut-kiem-duyet', '#ket-qua-kiem-duyet',
+    // 0.9.0: giao diện Youwee
+    '#nut-che-do svg', '#nut-thu-gon svg', '#luoi-chu-de .o-chu-de.dang-chon', '#menu .muc .ico svg', '#menu .muc .ten-muc',
+    // 0.8.0: skill kiểm duyệt + bảng rủi ro kiếm tiền
+    '#danh-sach-skill-kd .dong-khoa', '#nut-them-skill-kd', '#nut-xuat-skill-mac-dinh', '#nut-prompt-soi-lai',
+    '#ket-qua-kiem-duyet .bang-rui-ro .vien-muc', '#ket-qua-kiem-duyet .co-chinh-sach .vien-nhom',
     '#nut-cat-canh', '#bang-canh', '#nut-xuat-prompt', '#kho-nhan-vat',
     '#danh-sach-tai-khoan', '#nut-them-tai-khoan', '#khung-duyet',
     // 0.3.0: chế độ chạy độc lập, nạp tệp Word, mô tả cảnh hai kiểu, tự cập nhật
