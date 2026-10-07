@@ -2453,7 +2453,7 @@ async function chay() {
     const ts = ytDlp.thamSoPhuDe({ videoId: '0NY2gAftzJE', ngonNgu: 'en', thuMucTam: '/tam' })
     assert.deepStrictEqual(ts, [
       '--skip-download', '--no-simulate', '--write-subs', '--write-auto-subs',
-      '--sub-langs', 'en.*,en', '--sub-format', 'json3/vtt/best', '--no-playlist',
+      '--sub-langs', 'en,en-orig,en-US,en-GB', '--sleep-subtitles', '1', '--sub-format', 'json3/vtt/best', '--no-playlist',
       '--print', '%(id)s\t%(title)s\t%(duration)s\t%(channel)s',
       '-o', path.join('/tam', '%(id)s'),
       'https://www.youtube.com/watch?v=0NY2gAftzJE'
@@ -2519,6 +2519,75 @@ async function chay() {
       ytDlp.layPhuDe({ thuMucDuLieu: '/x', thuMucTam: d, videoId: 'bbbbbbbbbbb', chayHam: chayGia }),
       (e) => e.khongCoPhuDe && /không có phụ đề nào/.test(e.message) && Array.isArray(e.canhBaoYtDlp))
     assert.strictEqual(soLan, 1)
+  })
+
+  // --- 0.9.1: yt-dlp thoát mã lỗi ≠ không có phụ đề ---------------------------
+  const loiYtDlp = (loiChu, raChu = '') => Object.assign(new Error(ytDlp.dichLoiYtDlp(loiChu) || 'mã 1'), { ma: 1, loiChu, raChu })
+  const LOI_429 = "ERROR: Unable to download video subtitles for 'en-orig': HTTP Error 429: Too Many Requests"
+
+  await kiem('yt-dlp thoát mã 1 vì MỘT bản phụ đề hỏng nhưng bản khác đã tải xong → vẫn lấy được', async () => {
+    const d = thuMucTam('phu-de-mot-phan')
+    let soLan = 0
+    const chayGia = async () => {
+      soLan++
+      fs.writeFileSync(path.join(d, 'ccccccccccc.en.json3'), '{"events":[]}')
+      throw loiYtDlp(LOI_429, 'ccccccccccc\tTen\t60\tKenh\n')
+    }
+    const kq = await ytDlp.layPhuDe({ thuMucDuLieu: '/x', thuMucTam: d, videoId: 'ccccccccccc', chayHam: chayGia })
+    assert.strictEqual(kq.dinhDang, 'json3')
+    assert.strictEqual(kq.tieuDe, 'Ten', 'tiêu đề vẫn đọc được từ đầu ra của lượt lỗi')
+    assert.strictEqual(soLan, 1)
+  })
+
+  await kiem('lượt 1 thoát mã lỗi, chưa có tệp → VẪN thử client dự phòng (trước đây ném lỗi luôn)', async () => {
+    const d = thuMucTam('phu-de-loi-roi-duoc')
+    const goi = []
+    const chayGia = async (_tm, thamSo) => {
+      goi.push(thamSo.includes('--extractor-args'))
+      if (goi.length === 1) throw loiYtDlp('ERROR: [youtube] ddddddddddd: Unable to download API page: HTTP Error 403: Forbidden')
+      fs.writeFileSync(path.join(d, 'ddddddddddd.en.vtt'), 'WEBVTT')
+      return { raChu: 'ddddddddddd\tT\t1\tK\n', loiChu: '' }
+    }
+    const kq = await ytDlp.layPhuDe({ thuMucDuLieu: '/x', thuMucTam: d, videoId: 'ddddddddddd', chayHam: chayGia })
+    assert.deepStrictEqual(goi, [false, true])
+    assert.strictEqual(kq.dinhDang, 'vtt')
+  })
+
+  await kiem('cả hai lượt đều lỗi → thông báo kèm NGUYÊN VĂN dòng lỗi của yt-dlp, và dòng đó tới được Nhật ký', async () => {
+    const d = thuMucTam('phu-de-hai-loi')
+    const chayGia = async () => { throw loiYtDlp('WARNING: gi do\n' + LOI_429) }
+    await assert.rejects(
+      ytDlp.layPhuDe({ thuMucDuLieu: '/x', thuMucTam: d, videoId: 'eeeeeeeeeee', chayHam: chayGia }),
+      (e) => /lỗi 429/.test(e.message) && e.message.includes("yt-dlp nói: ERROR: Unable to download video subtitles for 'en-orig': HTTP Error 429") &&
+        e.canhBaoYtDlp.some((c) => c.includes('HTTP Error 429')))
+  })
+
+  await kiem('chưa có yt-dlp / không chạy nổi tiến trình → ném lại ngay, không giả vờ thử tiếp', async () => {
+    let soLan = 0
+    const chayGia = async () => { soLan++; throw Object.assign(new Error('Chưa có yt-dlp.'), { thieuYtDlp: true }) }
+    await assert.rejects(ytDlp.layPhuDe({ thuMucDuLieu: '/x', thuMucTam: thuMucTam('phu-de-thieu'), videoId: 'fffffffffff', chayHam: chayGia }), (e) => e.thieuYtDlp)
+    assert.strictEqual(soLan, 1)
+  })
+
+  await kiem('429 dịch đúng: KHÔNG khuyên "cập nhật yt-dlp" (cập nhật không giải quyết được việc bị chặn tần suất)', () => {
+    const c = ytDlp.dichLoiYtDlp(LOI_429)
+    assert.ok(/lỗi 429/.test(c) && /cookie/.test(c) && !/Cập nhật yt-dlp/.test(c), c)
+    assert.ok(ytDlp.dichLoiYtDlp('ERROR: Unable to download webpage: HTTP Error 403').includes('Cập nhật yt-dlp'), 'lỗi khác vẫn giữ lời khuyên cũ')
+    assert.strictEqual(ytDlp.ngonNguPhuDe('en'), 'en,en-orig,en-US,en-GB')
+    assert.ok(!ytDlp.ngonNguPhuDe('en').includes('*'), 'không dùng mẫu rộng: mỗi bản phụ đề là một lượt gọi, một lượt hỏng là cả lệnh thoát mã lỗi')
+  })
+
+  await kiem('chay(): lỗi mang theo nguyên văn stderr (kiểm bằng một tiến trình thật thoát mã 3)', async () => {
+    const d = thuMucTam('yt-gia')
+    const laWin = process.platform === 'win32'
+    const dich = ytDlp.duongDanBinary(d)
+    fs.mkdirSync(path.dirname(dich), { recursive: true })
+    // Tệp giả phải > 100.000 byte mới được coi là "đã có yt-dlp".
+    const don = '#'.repeat(100200)
+    if (laWin) return   // Windows cần .exe thật; nhánh này đã được ba ca phía trên phủ bằng hàm giả
+    fs.writeFileSync(dich, `#!/bin/sh\necho "x\tT\t1\tK"\necho "ERROR: boom nguyen van" 1>&2\nexit 3\n# ${don}\n`)
+    fs.chmodSync(dich, 0o755)
+    await assert.rejects(ytDlp.chay(d, []), (e) => e.ma === 3 && e.loiChu.includes('ERROR: boom nguyen van') && e.raChu.includes('x\tT'))
   })
 
   // =========================================================================

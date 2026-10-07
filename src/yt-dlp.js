@@ -159,7 +159,14 @@ function chay(thuMucDuLieu, thamSo, { thoiCho = 300000, baoDong = () => {} } = {
       daXong = true
       clearTimeout(hen)
       if (ma === 0) return xong({ raChu, loiChu })
-      hong(new Error(dichLoiYtDlp(loiChu) || `yt-dlp thoát với mã ${ma}`))
+      // Gắn NGUYÊN VĂN đầu ra vào lỗi. Trước 0.9.1 chỗ này chỉ trả câu đã dịch,
+      // nên Nhật ký không bao giờ có dòng lỗi thật của yt-dlp — người dùng (và
+      // người sửa) chỉ còn cách đoán.
+      const loi = new Error(dichLoiYtDlp(loiChu) || `yt-dlp thoát với mã ${ma}`)
+      loi.ma = ma
+      loi.raChu = raChu
+      loi.loiChu = loiChu
+      hong(loi)
     })
   })
 }
@@ -168,6 +175,13 @@ function chay(thuMucDuLieu, thamSo, { thoiCho = 300000, baoDong = () => {} } = {
 // hay gặp nhất sang câu người dùng hiểu được và biết phải làm gì.
 function dichLoiYtDlp(chu) {
   const s = String(chu || '')
+  // 429 phải xét TRƯỚC: dòng lỗi của nó cũng chứa chữ "Unable to download", và
+  // lời khuyên "cập nhật yt-dlp" ở nhánh dưới là sai hoàn toàn cho trường hợp
+  // này — cập nhật bao nhiêu lần YouTube vẫn chặn.
+  if (/HTTP Error 429|Too Many Requests/i.test(s)) {
+    return 'YouTube đang chặn tạm vì máy này gọi quá nhiều lần (lỗi 429) — không phải do yt-dlp cũ. ' +
+      'Chờ 15–60 phút rồi thử lại, hoặc đăng nhập một tài khoản ở màn Trình duyệt và bật "Dùng cookie của tài khoản" ở Cài đặt.'
+  }
   if (/Sign in to confirm|not a bot|cookies/i.test(s)) {
     return 'YouTube đòi đăng nhập để xác minh. Vào màn Trình duyệt đăng nhập một tài khoản, rồi bật "Dùng cookie của tài khoản" ở Cài đặt.'
   }
@@ -207,13 +221,21 @@ function dichLoiYtDlp(chu) {
 // đòi PO token cho phụ đề).
 const CLIENT_DU_PHONG = 'youtube:player_client=tv,web_safari,mweb,android_vr'
 
+// Chỉ xin đúng các bản cần, KHÔNG dùng mẫu "en.*". Mỗi bản phụ đề là một lượt
+// gọi riêng tới YouTube; mẫu rộng kéo về cả loạt biến thể, và chỉ cần MỘT lượt
+// bị từ chối (429) là yt-dlp thoát mã lỗi dù các bản khác đã tải xong.
+function ngonNguPhuDe(ngonNgu = 'en') {
+  return [ngonNgu, `${ngonNgu}-orig`, `${ngonNgu}-US`, `${ngonNgu}-GB`].join(',')
+}
+
 function thamSoPhuDe({ videoId, ngonNgu = 'en', thuMucTam, duongDanCookie = null, clientDuPhong = false }) {
   const thamSo = [
     '--skip-download',
     '--no-simulate',
     '--write-subs',
     '--write-auto-subs',
-    '--sub-langs', `${ngonNgu}.*,${ngonNgu}`,
+    '--sub-langs', ngonNguPhuDe(ngonNgu),
+    '--sleep-subtitles', '1',
     '--sub-format', 'json3/vtt/best',
     '--no-playlist',
     '--print', '%(id)s\t%(title)s\t%(duration)s\t%(channel)s',
@@ -230,6 +252,7 @@ function thamSoPhuDe({ videoId, ngonNgu = 'en', thuMucTam, duongDanCookie = null
 function chanDoanThieuPhuDe(loiChu, { ngonNgu = 'en' } = {}) {
   const s = String(loiChu || '')
   const canhBao = s.split('\n').map((d) => d.trim()).filter((d) => /^(WARNING|ERROR)/i.test(d))
+  const dongLoi = canhBao.filter((d) => /^ERROR/i.test(d))
   const coPoToken = /PO Token/i.test(s)
   const thieuJs = /JavaScript runtime|js-runtimes|\bdeno\b/i.test(s)
   const khongCoNgonNgu = /There are no subtitles for the requested languages|no subtitles for the requested/i.test(s)
@@ -243,6 +266,10 @@ function chanDoanThieuPhuDe(loiChu, { ngonNgu = 'en' } = {}) {
     lyDo = `Video có phụ đề nhưng KHÔNG có bản tiếng "${ngonNgu}" (kể cả tự động). Kiểm tra ngôn ngữ ở Cài đặt (relevanceLanguage).`
   } else if (khongCoGi) {
     lyDo = 'Video này không có phụ đề nào (kể cả phụ đề tự động).'
+  } else if (dongLoi.length) {
+    // yt-dlp báo lỗi thật: nói câu đã dịch KÈM nguyên văn dòng lỗi cuối, để
+    // không ai phải đoán.
+    lyDo = `${dichLoiYtDlp(s) || 'yt-dlp báo lỗi.'} — yt-dlp nói: ${dongLoi[dongLoi.length - 1].slice(0, 300)}`
   } else {
     lyDo = 'yt-dlp chạy xong nhưng không ghi ra tệp phụ đề nào. Thử Cài đặt → "Cập nhật yt-dlp". Chi tiết ở Nhật ký.'
   }
@@ -281,10 +308,22 @@ async function layPhuDe({
   // Lượt 1: client mặc định. Lượt 2 (chỉ khi lượt 1 không ra tệp): client dự phòng.
   for (const clientDuPhong of [false, true]) {
     baoTienDo({ phanTram: clientDuPhong ? 60 : 20, viec: 'Lấy phụ đề', chiTiet: videoId + (clientDuPhong ? ' · thử client dự phòng' : '') })
-    const { raChu, loiChu } = await chayHam(thuMucDuLieu,
-      thamSoPhuDe({ videoId, ngonNgu, thuMucTam, duongDanCookie, clientDuPhong }), {
-        baoDong: (d) => baoTienDo({ phanTram: clientDuPhong ? 75 : 45, viec: 'Lấy phụ đề', chiTiet: d.trim().slice(0, 110) })
-      })
+    let raChu = ''
+    let loiChu = ''
+    try {
+      ({ raChu, loiChu } = await chayHam(thuMucDuLieu,
+        thamSoPhuDe({ videoId, ngonNgu, thuMucTam, duongDanCookie, clientDuPhong }), {
+          baoDong: (d) => baoTienDo({ phanTram: clientDuPhong ? 75 : 45, viec: 'Lấy phụ đề', chiTiet: d.trim().slice(0, 110) })
+        }))
+    } catch (e) {
+      // yt-dlp thoát mã lỗi KHÔNG có nghĩa là không có phụ đề: nó thoát mã 1
+      // ngay cả khi chỉ một trong mấy bản phụ đề tải hỏng, còn các bản khác đã
+      // nằm trên đĩa. Trước 0.9.1 chỗ này ném lỗi luôn — bỏ cả tệp đã tải lẫn
+      // lượt thử client dự phòng. Chỉ ném lại khi yt-dlp chưa hề chạy được.
+      if (typeof e.loiChu !== 'string') throw e
+      raChu = e.raChu || ''
+      loiChu = e.loiChu
+    }
     loiGop += (loiChu || '') + '\n'
     const dong = (raChu.split('\n').find((d) => d.includes('\t')) || '').split('\t')
     if (dong.length >= 2) [, tieuDe = '', thoiLuong = '', tenKenh = ''] = dong
@@ -332,6 +371,7 @@ module.exports = {
   dinhDangCookieNetscape,
   dichLoiYtDlp,
   thamSoPhuDe,
+  ngonNguPhuDe,
   chanDoanThieuPhuDe,
   timTepPhuDe,
   CLIENT_DU_PHONG,

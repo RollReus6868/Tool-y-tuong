@@ -11,6 +11,30 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.9.1 — Lời thoại: yt-dlp báo lỗi không còn bị coi là "không lấy được"
+
+Báo lỗi từ người dùng: mọi lượt lấy lời thoại đều ra *"Không tải được từ YouTube.
+Thử bấm Cập nhật yt-dlp…"*, cập nhật yt-dlp xong vẫn y nguyên. **Nguyên nhân gốc
+phía YouTube chưa xác định được** — vì chính lỗi thứ nhất dưới đây đã xoá mất
+dòng lỗi thật khỏi Nhật ký. Ba lỗi của tool đã sửa:
+
+- **Nhật ký không có dòng lỗi thật của yt-dlp.** Khi yt-dlp thoát mã lỗi, tool
+  chỉ giữ câu đã dịch sang tiếng Việt và vứt nguyên văn. Giờ thông báo có dạng
+  *"… — yt-dlp nói: ERROR: …"* và các dòng WARNING/ERROR cuối được ghi vào Nhật ký.
+- **Một bản phụ đề hỏng là bỏ cả video.** yt-dlp thoát mã 1 ngay cả khi chỉ một
+  trong mấy bản phụ đề tải hỏng, còn bản khác đã nằm trên đĩa. Tool thấy mã lỗi
+  là ném lỗi luôn, không nhìn thư mục. Giờ có tệp nào tải được thì dùng tệp đó.
+- **Lượt thử client dự phòng không bao giờ chạy** khi lượt đầu thoát mã lỗi —
+  đúng lúc cần nó nhất. Giờ lượt hai luôn được thử.
+- Xin phụ đề gọn hơn: đúng 4 bản `en, en-orig, en-US, en-GB` thay cho mẫu `en.*`,
+  và nghỉ 1 giây giữa các bản. Mỗi bản là một lượt gọi tới YouTube; gọi ít thì ít
+  bị chặn tần suất.
+- **Lỗi 429 (Too Many Requests) có thông báo riêng** và không còn khuyên "cập
+  nhật yt-dlp" — cập nhật không giải quyết được việc bị chặn tần suất; cách đúng
+  là chờ, hoặc bật "Dùng cookie của tài khoản".
+- **Chưa nghiệm thu với YouTube thật**: máy dựng bị chặn kết nối tới YouTube. Nếu
+  sau bản này vẫn lỗi, dòng *"yt-dlp nói: …"* trong Nhật ký là thứ cần gửi.
+
 ### 0.9.0 — Ba nhóm "nội dung không chân thực" của 2026, và giao diện kiểu Youwee
 
 **Kiểm duyệt.** Giữa tháng 7/2026 YouTube viết lại chính sách "nội dung không
