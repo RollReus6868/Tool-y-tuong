@@ -18,6 +18,7 @@ const { xuatExcel } = require('./src/xuat-excel')
 const { taoKhachHang } = require('./src/youtube-api')
 const kenhTheoDoi = require('./src/kenh-theo-doi')
 const ytDlp = require('./src/yt-dlp')
+const phuDeTrinhDuyet = require('./src/phu-de-trinh-duyet')
 const phuDe = require('./src/phu-de')
 const kichBan = require('./src/kich-ban')
 const kiemDuyet = require('./src/kiem-duyet')
@@ -687,6 +688,23 @@ function dangKyIPC() {
   })
 
   // --- Lời thoại -------------------------------------------------------------
+  // Một video: yt-dlp trước; YouTube đòi PO token (hoặc yt-dlp hỏng kiểu khác)
+  // thì tự chuyển sang lấy qua trình duyệt ẩn trong app — xem
+  // src/phu-de-trinh-duyet.js. Hai màn Lời thoại dùng chung hàm này.
+  function layPhuDeMotVideo({ videoId, ngonNgu, thuMucTam, duongDanCookie, taiKhoanId }) {
+    const baoLoiThoai = (t) => baoTienDo({ ...t, khu: 'loithoai' })
+    return phuDeTrinhDuyet.layCoDuPhong({
+      videoId,
+      nhatKy,
+      layYtDlp: () => ytDlp.layPhuDe({
+        thuMucDuLieu: kho.thuMuc, thuMucTam, videoId, ngonNgu, duongDanCookie, baoTienDo: baoLoiThoai
+      }),
+      layTrinhDuyet: quanLyDuyet && (() => phuDeTrinhDuyet.layQuaTrinhDuyet({
+        quanLyDuyet, taiKhoanId, videoId, ngonNgu, baoTienDo: baoLoiThoai
+      }))
+    })
+  }
+
   ipcMain.handle('loithoai:lay', async (_su, { chuNhap, duAnMa, taiKhoanId }) => {
     const caiDat = kho.docCaiDat()
     const ids = ytDlp.tachNhieuVideoId(chuNhap)
@@ -727,13 +745,12 @@ function dangKyIPC() {
           daXong: i, tong: ids.length, khu: 'loithoai'
         })
         try {
-          const tho = await ytDlp.layPhuDe({
-            thuMucDuLieu: kho.thuMuc,
-            thuMucTam,
+          const tho = await layPhuDeMotVideo({
             videoId: id,
             ngonNgu: (caiDat.relevanceLanguage || 'en').slice(0, 2),
+            thuMucTam,
             duongDanCookie,
-            baoTienDo: (t) => baoTienDo({ ...t, khu: 'loithoai' })
+            taiKhoanId
           })
           const sach = phuDe.chuyenThanhVanBan(tho.tho, { dinhDang: tho.dinhDang })
           ketQua.push({
@@ -847,13 +864,12 @@ function dangKyIPC() {
     }
 
     try {
-      const tho = await ytDlp.layPhuDe({
-        thuMucDuLieu: kho.thuMuc,
-        thuMucTam,
+      const tho = await layPhuDeMotVideo({
         videoId: id,
         ngonNgu: (caiDat.relevanceLanguage || 'en').slice(0, 2),
+        thuMucTam,
         duongDanCookie,
-        baoTienDo: (t) => baoTienDo({ ...t, khu: 'loithoai' })
+        taiKhoanId
       })
       const sach = phuDe.chuyenThanhVanBan(tho.tho, { dinhDang: tho.dinhDang })
       baoTienDo({

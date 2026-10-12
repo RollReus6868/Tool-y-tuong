@@ -309,7 +309,14 @@ function taoQuanLy({ electron, cuaSo, nhatKy = { tin() {}, loi() {} }, baoSuKien
       return kq.chu
     }
 
-    return { doc, dong, mo, goiTrongTrang, urlHienTai: () => (win.isDestroyed() ? '' : wc.getURL()) }
+    // Chạy một script trong trang đang mở (coi như người dùng vừa bấm — trình
+    // phát YouTube chỉ chịu bật phụ đề / phát video khi có "cử chỉ người dùng").
+    async function chayScript(script) {
+      if (win.isDestroyed()) throw new Error('Trình đọc đã đóng')
+      return wc.executeJavaScript(script, true)
+    }
+
+    return { doc, dong, mo, goiTrongTrang, chayScript, urlHienTai: () => (win.isDestroyed() ? '' : wc.getURL()) }
   }
 
   async function xoaPhien(taiKhoanId) {

@@ -21,6 +21,7 @@ const phuDe = require('../src/phu-de')
 const lichSu = require('../src/lich-su')
 const kenhTheoDoi = require('../src/kenh-theo-doi')
 const ytDlp = require('../src/yt-dlp')
+const phuDeTD = require('../src/phu-de-trinh-duyet')
 const kichBanMod = require('../src/kich-ban')
 const kiemDuyet = require('../src/kiem-duyet')
 const promptAnh = require('../src/prompt-anh')
@@ -3262,6 +3263,149 @@ async function chay() {
     const pk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'))
     assert.ok(/^\d+\.\d+\.\d+$/.test(pk.version))
     assert.ok(/Từ khóa hot/.test(pk.build.releaseInfo.releaseNotes))
+  })
+
+
+  // =========================================================================
+  nhom('49. Phụ đề qua trình duyệt trong app (0.9.2) — video bị YouTube đòi PO token')
+
+  const BAN_TAY = { baseUrl: 'https://www.youtube.com/api/timedtext?v=b5jdhuq-X74&lang=en&exp=xpe&sig=1', languageCode: 'en' }
+  const BAN_ASR = { baseUrl: 'https://www.youtube.com/api/timedtext?v=b5jdhuq-X74&lang=en&kind=asr&exp=xpe&sig=2', languageCode: 'en', kind: 'asr' }
+
+  await kiem('chọn bản phụ đề: bản làm tay trước, rồi bản tự động; en-US vẫn tính là en; không có thì null', () => {
+    assert.strictEqual(phuDeTD.chonBanPhuDe([BAN_ASR, BAN_TAY], 'en'), BAN_TAY)
+    assert.strictEqual(phuDeTD.chonBanPhuDe([BAN_ASR], 'en'), BAN_ASR)
+    const us = { baseUrl: 'x', languageCode: 'en-US' }
+    assert.strictEqual(phuDeTD.chonBanPhuDe([us], 'en'), us)
+    assert.strictEqual(phuDeTD.chonBanPhuDe([{ baseUrl: 'x', languageCode: 'vi' }], 'en'), null)
+    assert.strictEqual(phuDeTD.chonBanPhuDe(undefined, 'en'), null)
+  })
+
+  await kiem('ghép link NGUYÊN VĂN: giữ bản đã chọn, chép pot/potc/c từ link trình phát, bỏ lang/tlang của link bắt được, ép json3', () => {
+    const bat = 'https://www.youtube.com/api/timedtext?v=b5jdhuq-X74&lang=es&tlang=fr&kind=asr&fmt=srv3&pot=TOKEN_ABC&potc=1&c=WEB&cver=2.2026'
+    assert.strictEqual(phuDeTD.ghepLinkPhuDe(BAN_TAY.baseUrl, bat),
+      'https://www.youtube.com/api/timedtext?v=b5jdhuq-X74&lang=en&exp=xpe&sig=1&pot=TOKEN_ABC&potc=1&c=WEB&cver=2.2026&fmt=json3')
+    assert.strictEqual(phuDeTD.ghepLinkPhuDe(BAN_TAY.baseUrl, null),
+      'https://www.youtube.com/api/timedtext?v=b5jdhuq-X74&lang=en&exp=xpe&sig=1&fmt=json3')
+  })
+
+  // Chạy NGUYÊN script trong trang với một trình phát giả: trình phát gọi
+  // timedtext (kèm pot) bằng XMLHttpRequest khi được bật phụ đề; máy chủ giả chỉ
+  // trả json3 khi link có pot — đúng hành vi đã đo trên trang thật 10/2026.
+  async function chayScriptGia({ cacBan = [BAN_ASR], trangThai = 'OK', mayChuDoiToken = true, phatSinhLink = true, daBatSan = false } = {}) {
+    const vm = require('vm')
+    const daGoi = []
+    class XMLHttpRequest { open() {} }
+    let daNapPhuDe = daBatSan          // tài khoản bật "luôn hiện phụ đề": đã nạp trước khi script chạy
+    const hop = {}
+    const tp = {
+      getPlayerResponse: () => ({
+        videoDetails: { videoId: 'b5jdhuq-X74', title: 'Tiêu đề', author: 'Kênh', lengthSeconds: '1204' },
+        playabilityStatus: { status: trangThai },
+        captions: { playerCaptionsTracklistRenderer: { captionTracks: cacBan } }
+      }),
+      mute() {}, playVideo() {}, pauseVideo() {},
+      unloadModule(m) { if (m === 'captions') daNapPhuDe = false },
+      loadModule() {},
+      setOption(m, k, v) {
+        // Đã nạp rồi thì trình phát KHÔNG gọi lại — chỉ gọi khi nạp mới.
+        if (m === 'captions' && k === 'track' && !daNapPhuDe && phatSinhLink) {
+          daNapPhuDe = true
+          new hop.XMLHttpRequest().open('GET', `https://www.youtube.com/api/timedtext?v=b5jdhuq-X74&lang=${v.languageCode}&kind=asr&fmt=json3&pot=TOK&potc=1&c=WEB`)
+        }
+      }
+    }
+    Object.assign(hop, {
+      XMLHttpRequest,
+      document: { getElementById: (id) => (id === 'movie_player' ? tp : null), querySelector: () => null },
+      fetch: async (url) => {
+        daGoi.push(url)
+        const ok = !mayChuDoiToken || url.includes('pot=TOK')
+        return { ok: true, text: async () => (ok ? '{"events":[{"segs":[{"utf8":"hello"}]}]}' : '') }
+      },
+      setTimeout: (f) => setTimeout(f, 0),
+      URL, JSON, Object, Number, String, Promise
+    })
+    hop.window = hop
+    const fetchGoc = hop.fetch
+    const moGoc = XMLHttpRequest.prototype.open
+    const chu = await vm.runInNewContext(phuDeTD.scriptLayPhuDe('b5jdhuq-X74', 'en', { soLuot: 5 }), hop)
+    assert.strictEqual(hop.fetch, fetchGoc, 'phải trả lại fetch gốc cho trang')
+    assert.strictEqual(XMLHttpRequest.prototype.open, moGoc, 'phải trả lại XMLHttpRequest.open gốc')
+    return { kq: JSON.parse(chu), daGoi }
+  }
+
+  await kiem('script trong trang: video đòi PO token → bật phụ đề, bắt link có pot, tải json3 thành công', async () => {
+    const { kq, daGoi } = await chayScriptGia()
+    assert.strictEqual(kq.cach, 'po-token')
+    assert.ok(kq.tho.includes('"events"'))
+    assert.deepStrictEqual([kq.tieuDe, kq.tenKenh, kq.thoiLuongGiay], ['Tiêu đề', 'Kênh', 1204])
+    assert.ok(daGoi.every((u) => u.includes('pot=TOK')), 'link có exp=xpe thì không được tải thẳng: ' + daGoi.join(' | '))
+    assert.ok(daGoi[0].includes('kind=asr') && daGoi[0].includes('fmt=json3'))
+  })
+
+  await kiem('script trong trang: phụ đề đã nạp SẴN trước khi script chạy → vẫn bắt được (gỡ rồi nạp lại mô-đun)', async () => {
+    const { kq } = await chayScriptGia({ daBatSan: true })
+    assert.strictEqual(kq.cach, 'po-token')
+  })
+
+  await kiem('script trong trang: bản không bị đòi token thì tải thẳng, không cần bật trình phát', async () => {
+    const thuong = { baseUrl: 'https://www.youtube.com/api/timedtext?v=b5jdhuq-X74&lang=en&sig=3', languageCode: 'en' }
+    const { kq } = await chayScriptGia({ cacBan: [thuong], mayChuDoiToken: false, phatSinhLink: false })
+    assert.strictEqual(kq.cach, 'tai-thang')
+  })
+
+  await kiem('script trong trang: không có phụ đề / không có tiếng en / video không xem được / không bắt được link', async () => {
+    assert.ok((await chayScriptGia({ cacBan: [] })).kq.khongCoGi)
+    assert.ok((await chayScriptGia({ cacBan: [{ baseUrl: 'x', languageCode: 'vi' }] })).kq.khongCoNgonNgu)
+    assert.ok(/không xem được/.test((await chayScriptGia({ trangThai: 'LOGIN_REQUIRED' })).kq.loi))
+    assert.ok(/không bắt được link/.test((await chayScriptGia({ phatSinhLink: false })).kq.loi))
+  })
+
+  const nhatKyGia = () => { const d = []; return { d, tin: (x) => d.push(x), canhBao: (x) => d.push(x), loi: (x) => d.push(x) } }
+
+  await kiem('dự phòng: yt-dlp được thì KHÔNG mở trình duyệt', async () => {
+    let moTrinhDuyet = 0
+    const kq = await phuDeTD.layCoDuPhong({ videoId: 'v', nhatKy: nhatKyGia(), layYtDlp: async () => ({ tho: 'a' }), layTrinhDuyet: async () => { moTrinhDuyet++ } })
+    assert.deepStrictEqual([kq.tho, moTrinhDuyet], ['a', 0])
+  })
+
+  await kiem('dự phòng: yt-dlp báo PO token → chuyển sang trình duyệt và trả kết quả của nó', async () => {
+    const nk = nhatKyGia()
+    const loi = new Error('PO token'); loi.khongCoPhuDe = true
+    const kq = await phuDeTD.layCoDuPhong({ videoId: 'v', nhatKy: nk, layYtDlp: async () => { throw loi }, layTrinhDuyet: async () => ({ tho: 'b', cach: 'po-token' }) })
+    assert.strictEqual(kq.tho, 'b')
+    assert.ok(nk.d.some((x) => /trình duyệt trong app/.test(x)))
+  })
+
+  await kiem('dự phòng: video thật sự không có phụ đề / không có tiếng en → không mở trình duyệt vô ích', async () => {
+    for (const co of ['khongCoGi', 'khongCoNgonNgu']) {
+      const loi = new Error(co); loi[co] = true
+      let mo = 0
+      await assert.rejects(phuDeTD.layCoDuPhong({ videoId: 'v', nhatKy: nhatKyGia(), layYtDlp: async () => { throw loi }, layTrinhDuyet: async () => { mo++ } }), new RegExp(co))
+      assert.strictEqual(mo, 0)
+    }
+  })
+
+  await kiem('dự phòng: cả hai đường hỏng → báo CẢ HAI lý do, giữ cảnh báo yt-dlp cho Nhật ký', async () => {
+    const loi = new Error('lỗi yt-dlp'); loi.canhBaoYtDlp = ['WARNING: x']
+    await assert.rejects(
+      phuDeTD.layCoDuPhong({ videoId: 'v', nhatKy: nhatKyGia(), layYtDlp: async () => { throw loi }, layTrinhDuyet: async () => { throw new Error('lỗi trình duyệt') } }),
+      (e) => /lỗi yt-dlp/.test(e.message) && /lỗi trình duyệt/.test(e.message) && e.canhBaoYtDlp[0] === 'WARNING: x')
+  })
+
+  await kiem('yt-dlp gắn cờ khongCoGi / khongCoNgonNgu vào lỗi để bên dự phòng biết khỏi thử', async () => {
+    const d = thuMucTam('phu-de-co')
+    const chayGia = async () => ({ raChu: '', loiChu: '[info] abcdefghijk has no subtitles' })
+    await assert.rejects(ytDlp.layPhuDe({ thuMucDuLieu: '/x', thuMucTam: d, videoId: 'abcdefghijk', chayHam: chayGia }), (e) => e.khongCoGi === true && !e.khongCoNgonNgu)
+  })
+
+  await kiem('mã nguồn: cả hai màn Lời thoại đi qua layPhuDeMotVideo, trình đọc ẩn có chayScript', () => {
+    const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8')
+    assert.strictEqual((main.match(/ytDlp\.layPhuDe\(/g) || []).length, 1, 'chỉ hàm layPhuDeMotVideo được gọi yt-dlp trực tiếp')
+    assert.strictEqual((main.match(/await layPhuDeMotVideo\(/g) || []).length, 2)
+    const td = fs.readFileSync(path.join(__dirname, '..', 'src', 'trinh-duyet.js'), 'utf8')
+    assert.ok(/chayScript/.test(td) && /executeJavaScript\(script, true\)/.test(td))
   })
 
   // =========================================================================

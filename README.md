@@ -11,6 +11,30 @@ chạy độc lập được.
 
 ## Có gì mới
 
+### 0.9.2 — Lời thoại: lấy được phụ đề của các kênh bị YouTube đòi "PO token"
+
+Báo lỗi: một kênh (Deep Bible Stories) lấy phụ đề luôn ra *"YouTube đòi PO
+token…"*, kênh khác vẫn bình thường.
+
+- **Nguyên nhân thật** (đã đo trên chính video đó): YouTube đang bật một thử
+  nghiệm cho một số video — thường cả kênh một lúc. Mọi bản phụ đề của các video
+  này mang cờ `exp=xpe`; muốn tải phải kèm một "PO token" mà chỉ trình duyệt thật
+  sinh ra được (mã chống bot chạy trong trang YouTube). Không có token, YouTube
+  vẫn trả "200 OK" nhưng **ruột rỗng** — nên yt-dlp bỏ bản đó. Đổi client, cập
+  nhật yt-dlp hay dùng cookie đều không sinh được token. Đây không phải lỗi của
+  video hay của tool, và lời khuyên "Cập nhật yt-dlp" của bản cũ là sai cho
+  trường hợp này.
+- **Cách sửa:** yt-dlp hỏng thì tool **tự** mở video trong một cửa sổ ẩn của
+  chính app (trình duyệt thật), bật phụ đề trong trình phát để nó tự tạo link có
+  token, bắt link đó rồi tải bản json3 — y như người xem bấm nút CC. Không phải
+  bấm gì thêm. Dùng phiên của tài khoản đang chọn ở ô tài khoản; không chọn thì
+  dùng phiên khách. Mất thêm khoảng 5–15 giây cho mỗi video bị chặn kiểu này.
+- Video thật sự không có phụ đề (hoặc không có bản tiếng Anh) thì tool **không**
+  mở cửa sổ thử vô ích. Cả hai đường đều hỏng thì thông báo nói đủ cả hai lý do.
+- **Đã nghiệm thu với YouTube thật**: chạy đúng đoạn mã trong trang của video
+  `b5jdhuq-X74`: không token → rỗng; có token → đủ 1.342 dòng phụ đề (22 phút).
+  Phần chưa chạy thật là bước mở cửa sổ ẩn trong bản `.exe` — cần anh bấm thử.
+
 ### 0.9.1 — Lời thoại: yt-dlp báo lỗi không còn bị coi là "không lấy được"
 
 Báo lỗi từ người dùng: mọi lượt lấy lời thoại đều ra *"Không tải được từ YouTube.

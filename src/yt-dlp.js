@@ -260,8 +260,10 @@ function chanDoanThieuPhuDe(loiChu, { ngonNgu = 'en' } = {}) {
 
   let lyDo
   if (coPoToken) {
-    lyDo = 'YouTube đòi "PO token" mới cho tải phụ đề (thay đổi phía YouTube, không phải video thiếu phụ đề). ' +
-      'Tool đã thử các client khác mà vẫn không được. Thử: Cài đặt → "Cập nhật yt-dlp"; hoặc đăng nhập một tài khoản ở màn Trình duyệt rồi bật "Dùng cookie của tài khoản".'
+    // Từ 0.9.2 lỗi này được tool tự xử lý bằng đường trình duyệt trong app
+    // (src/phu-de-trinh-duyet.js) — câu này chỉ còn hiện khi cả đường đó hỏng.
+    lyDo = 'YouTube đòi "PO token" cho phụ đề của video này (thử nghiệm phía YouTube, áp cho một số kênh — không phải video thiếu phụ đề). ' +
+      'yt-dlp không tự sinh được token này.'
   } else if (khongCoNgonNgu) {
     lyDo = `Video có phụ đề nhưng KHÔNG có bản tiếng "${ngonNgu}" (kể cả tự động). Kiểm tra ngôn ngữ ở Cài đặt (relevanceLanguage).`
   } else if (khongCoGi) {
@@ -338,6 +340,8 @@ async function layPhuDe({
     const cd = chanDoanThieuPhuDe(loiGop, { ngonNgu })
     const loi = new Error(cd.lyDo)
     loi.khongCoPhuDe = true
+    loi.khongCoGi = cd.khongCoGi
+    loi.khongCoNgonNgu = cd.khongCoNgonNgu
     loi.tieuDe = tieuDe
     loi.canhBaoYtDlp = cd.canhBao
     throw loi
